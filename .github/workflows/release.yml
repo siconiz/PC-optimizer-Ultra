@@ -1,0 +1,74 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Check tag matches core/version.py
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          $code = python -c "from core.version import __version__; print(__version__)"
+          if ($v -ne $code) { throw "Tag $v does not match core/version.py ($code)" }
+          "APP_VERSION=$v" >> $env:GITHUB_ENV
+
+      - name: Download PresentMon
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v2.6.0 -R GameTechDev/PresentMon -p "PresentMon-2.6.0-x64.exe" -D tools
+          Invoke-WebRequest https://raw.githubusercontent.com/GameTechDev/PresentMon/main/LICENSE.txt -OutFile tools/PresentMon-LICENSE.txt
+
+      - name: Download LibreHardwareMonitorLib and PawnIO
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.9.6 -R LibreHardwareMonitor/LibreHardwareMonitor -p "LibreHardwareMonitor.zip" -D lhm-zip
+          Expand-Archive lhm-zip/LibreHardwareMonitor.zip lhm-zip/x
+          New-Item -ItemType Directory -Force tools/lhm | Out-Null
+          Get-ChildItem lhm-zip/x/*.dll | Where-Object { $_.Name -notmatch '^(Aga\.|OxyPlot|Microsoft\.Win32\.TaskScheduler)' } |
+            Copy-Item -Destination tools/lhm
+          Invoke-WebRequest https://raw.githubusercontent.com/LibreHardwareMonitor/LibreHardwareMonitor/master/LICENSE -OutFile tools/lhm/LICENSE-MPL-2.0.txt
+          Invoke-WebRequest https://raw.githubusercontent.com/LibreHardwareMonitor/LibreHardwareMonitor/master/THIRD-PARTY-NOTICES.txt -OutFile tools/lhm/THIRD-PARTY-NOTICES.txt
+          gh release download -R namazso/PawnIO.Setup -p "PawnIO_setup.exe" -D tools
+          Invoke-WebRequest https://raw.githubusercontent.com/namazso/PawnIO/master/COPYING -OutFile tools/PawnIO-LICENSE.txt
+
+      - name: Build app
+        run: python build.py
+
+      # Code signing: add the SignPath signing step here once the project is approved.
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (-not (Test-Path $nsis)) { choco install nsis -y --no-progress }
+          & $nsis "/DVERSION=$env:APP_VERSION" installer.nsi
+          if ($LASTEXITCODE) { throw "makensis failed" }
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $f = "dist\PCOptimizer-Setup-$env:APP_VERSION.exe"
+          (Get-FileHash $f -Algorithm SHA256).Hash | Out-File "$f.sha256" -Encoding ascii
+          gh release create "${{ github.ref_name }}" $f "$f.sha256" --generate-notes
