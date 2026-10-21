@@ -1,5 +1,5 @@
 """A picture of the user's choice behind the whole window: open areas show it, and cards and the sidebar show it
-frosted (mixed with the card color) so text stays readable.
+frosted (mixed with their own color, so tiles and tables keep their brightness) and text stays readable.
 
 Tk widgets cannot be see-through, so every surface gets its own copy of the picture, shifted so that together they
 look like one picture fixed behind the window: customtkinter widgets draw themselves on a canvas (the picture goes
@@ -10,6 +10,7 @@ from . import theme
 STRENGTH = 0.35   # default: 35% picture in open areas
 GLASS = 0.5       # cards and the sidebar show the picture at half that strength
 BLUR = 6          # softens the picture so small details do not fight with the text
+POS = 0.3         # default part of a tall picture to show: a little above the middle (faces are usually there)
 
 def cfg(app):
     return app.cfg.setdefault("background", {"path": "", "strength": STRENGTH})
@@ -21,17 +22,20 @@ def downloads():
 class Background:
     def __init__(self, app):
         self.app, self.src = app, None
-        self.img, self.photo = {}, {}       # kind ('open' / 'glass') -> PIL image / PhotoImage of the whole window
+        self.pic = None                     # the blurred picture at window size
+        self.img, self.photo = {}, {}       # kind ('open' or a surface color) -> PIL image / PhotoImage of the window
         self.layers, self.items, self.texts, self.cards, self.fills = {}, {}, {}, {}, {}
         app.bind("<Configure>", lambda e: self._later(self._build, 250) if e.widget is app else None, add="+")
         self._tick()
 
     # ---------- settings ----------
-    def set(self, path, strength=None):
+    def set(self, path, strength=None, pos=None):
         c = cfg(self.app)
         c["path"] = path or ""
         if strength is not None:
             c["strength"] = strength
+        if pos is not None:
+            c["pos"] = pos
         self.app.save()
         self.src = None
         self._build()
@@ -73,22 +77,54 @@ class Background:
         sw, sh = self.src.size
         k = max(w / sw, h / sh)
         img = self.src.resize((max(w, int(sw * k)), max(h, int(sh * k))), Image.LANCZOS)
-        left, top = (img.width - w) // 2, (img.height - h) // 2
-        img = img.crop((left, top, left + w, top + h)).filter(ImageFilter.GaussianBlur(BLUR))
-        s = float(c.get("strength", STRENGTH))
-        self.img = {"open": Image.blend(Image.new("RGB", (w, h), theme.BG), img, s),
-                    "glass": Image.blend(Image.new("RGB", (w, h), theme.CARD), img, s * GLASS)}
-        self.photo = {k: ImageTk.PhotoImage(v) for k, v in self.img.items()}
+        pos = c.get("pos")  # which part shows where the picture is cut: 0 = top / left, 1 = bottom / right
+        left = int((img.width - w) * (0.5 if pos is None else pos))
+        top = int((img.height - h) * (POS if pos is None else pos))
+        self.pic = img.crop((left, top, left + w, top + h)).filter(ImageFilter.GaussianBlur(BLUR))
+        self.img, self.photo = {}, {}
+        self._ph("open")
         for frame, (lbl, kind) in self.layers.items():
             if lbl.winfo_exists():
-                lbl.configure(image=self.photo[kind])
+                lbl.configure(image=self._ph(kind))
         for cv, (item, top, kind) in self.items.items():
             if cv.winfo_exists():
-                cv.itemconfigure(item, image=self.photo[kind])
+                cv.itemconfigure(item, image=self._ph(kind))
         self.texts = {w: (inner, kind, None) for w, (inner, kind, _) in self.texts.items()}
         self.cards = {w: (item, None) for w, (item, _) in self.cards.items()}
         self.fills = {w: (kind, None) for w, (kind, _) in self.fills.items()}
+        self._tables(True)
         self.paint(self.app)
+
+    def _im(self, kind):
+        """The picture mixed with the page color (open areas) or with a surface's own color at half strength,
+        so a light tile stays lighter than the card around it."""
+        if kind not in self.img:
+            from PIL import Image
+            s = float(cfg(self.app).get("strength", STRENGTH))
+            base = Image.new("RGB", self.pic.size, theme.BG if kind == "open" else kind)
+            self.img[kind] = Image.blend(base, self.pic, s if kind == "open" else s * GLASS)
+        return self.img[kind]
+
+    def _ph(self, kind):
+        if kind not in self.photo:
+            from PIL import ImageTk
+            self.photo[kind] = ImageTk.PhotoImage(self._im(kind))
+        return self.photo[kind]
+
+    def _tables(self, on):
+        """Lists (ttk tables) cannot show a picture: give them the average color of their frosted piece."""
+        from tkinter import ttk
+        if on:
+            from PIL import Image
+            def avg(c):
+                r, g, b = self._im(c).resize((1, 1), Image.BOX).getpixel((0, 0))
+                return "#%02x%02x%02x" % (r, g, b)
+            body, head = avg(theme.TABLE), avg(theme.CARD)
+        else:
+            body, head = theme.TABLE, theme.CARD
+        st = ttk.Style()
+        st.configure("D.Treeview", background=body, fieldbackground=body, lightcolor=body, darkcolor=body)
+        st.configure("D.Treeview.Heading", background=head, lightcolor=head, darkcolor=head)
 
     def clear(self):
         for lbl, _ in self.layers.values():
@@ -103,21 +139,28 @@ class Background:
         for inner, _, _ in self.texts.values():
             if inner.winfo_exists():
                 inner.configure(bg=inner._bg_orig) if inner._bg_plain else inner.configure(image="")
+        had = bool(self.photo)
         self.layers, self.items, self.texts, self.cards, self.img, self.photo = {}, {}, {}, {}, {}, {}
-        self.fills = {}
+        self.fills, self.pic = {}, None
+        if had:
+            self._tables(False)
 
     # ---------- finding the surfaces ----------
     def _kind_of(self, w):
         while w is not None:
-            if self._is_card(w):
-                return "glass"
+            c = self._surface(w)
+            if c:
+                return c
             w = getattr(w, "master", None)
         return "open"
 
-    @staticmethod
-    def _is_card(w):
+    def _surface(self, w):
+        """The color of a solid frame (card, sidebar, tile, table box), or None."""
         import customtkinter as ctk
-        return type(w) is ctk.CTkFrame and w.cget("fg_color") in (theme.CARD, theme.SIDE)
+        if type(w) is not ctk.CTkFrame or w is self.app.content:
+            return None
+        c = w._apply_appearance_mode(w.cget("fg_color"))
+        return None if c in ("transparent", theme.BG) else c
 
     def paint(self, root, quiet=False):
         """Give every surface under root its piece of the picture."""
@@ -134,21 +177,22 @@ class Background:
                 self._layer(w, kind)
                 self._canvas(w._parent_canvas, True, kind)
                 self._canvas(w._parent_frame._canvas, True, kind)
+                walk(w._scrollbar, kind)
                 if not getattr(w, "_bg_hooked", False):
                     w._bg_hooked = True
                     bar = w._scrollbar
-                    w._parent_canvas.configure(yscrollcommand=lambda a, b: (bar.set(a, b), self._later(self.place, 1)))
+                    w._parent_canvas.configure(yscrollcommand=lambda a, b, w=w: (bar.set(a, b), self._scrolled(w)))
             elif isinstance(w, ctk.CTkFrame):
-                fg = w.cget("fg_color")
-                if self._is_card(w):  # card / sidebar: frosted picture inside the rounded shape
+                col = self._surface(w)
+                if col:  # card, sidebar, tile, table box: frosted picture inside the rounded shape
                     self._canvas(w._canvas, False, kind)
                     if w not in self.cards:
                         self.cards[w] = (None, None)
                         new.append(w)
-                    kind = "glass"
-                elif fg in ("transparent", theme.BG) or w is self.app.content:
+                    kind = col
+                elif type(w) is ctk.CTkFrame:
                     self._canvas(w._canvas, True, kind)  # over the frame's own fill; children are windows above
-                else:  # tiles, tables and segmented buttons stay solid; only their corners
+                else:  # segmented buttons stay solid; only their corners
                     self._canvas(w._canvas, False, kind)
                     return
             elif isinstance(w, ctk.CTkLabel):
@@ -158,7 +202,8 @@ class Background:
                     self._text(w._label, kind)
                 return
             elif isinstance(w, tkinter.Label):
-                if not w.cget("image"):
+                bg = getattr(w, "_bg_orig", None) or w.cget("bg")
+                if not w.cget("image") and bg in (theme.BG, theme.SIDE, theme.CARD, theme.CARD2, theme.TABLE):
                     self._text(w, kind, plain=True)
                 return
             elif isinstance(w, tkinter.Tk):
@@ -171,6 +216,10 @@ class Background:
                 self._canvas(w, True, kind)  # the scrolling canvas of a page
             elif isinstance(w, tkinter.Frame) and not isinstance(w, CTkBaseClass):
                 self._layer(w, kind)
+            elif isinstance(w, ctk.CTkScrollbar):  # picture over the track, the handle stays on top
+                w._canvas._bg_keep = "scrollbar_parts"
+                self._canvas(w._canvas, True, kind)
+                return
             else:
                 if isinstance(w, CTkBaseClass):  # the widget's own frame shows around its canvas: match its color
                     self.fills.setdefault(w, (kind, None))
@@ -207,7 +256,7 @@ class Background:
         """Plain Tk frame (the window, the inside of a scrolling page): a label with the picture under its children."""
         if frame in self.layers and self.layers[frame][0].winfo_exists():
             return
-        lbl = tkinter.Label(frame, image=self.photo[kind], bd=0, highlightthickness=0)
+        lbl = tkinter.Label(frame, image=self._ph(kind), bd=0, highlightthickness=0)
         lbl.place(x=0, y=0)
         lbl.lower()
         self.layers[frame] = (lbl, kind)
@@ -215,9 +264,11 @@ class Background:
 
     def _canvas(self, cv, top, kind):
         if cv not in self.items:
-            self.items[cv] = (cv.create_image(0, 0, image=self.photo[kind], anchor="nw"), top, kind)
+            self.items[cv] = (cv.create_image(0, 0, image=self._ph(kind), anchor="nw"), top, kind)
         item, top, _ = self.items[cv]
         (cv.tag_raise if top else cv.tag_lower)(item)
+        if getattr(cv, "_bg_keep", None):
+            cv.tag_raise(cv._bg_keep)
 
     def _restack(self, cv):
         """Picture over the shapes (open areas, transparent buttons) or under them (corners only). A transparent
@@ -229,6 +280,8 @@ class Background:
         if owner is not None:
             top = owner.cget("fg_color") == "transparent" and not self._hovered(owner, cv)
         (cv.tag_raise if top else cv.tag_lower)(item)
+        if getattr(cv, "_bg_keep", None):
+            cv.tag_raise(cv._bg_keep)  # the scrollbar redraws its handle just above the track: put it over the picture
         lbl = getattr(owner, "_text_label", None) if owner is not None else None
         if lbl is not None and lbl in self.texts:
             self.texts[lbl] = (lbl, kind, None)  # customtkinter recolors it on every redraw: color it again
@@ -273,33 +326,60 @@ class Background:
         return masks[(w, h, r)]
 
     # ---------- keeping the pieces in place ----------
-    def place(self):
-        """Shift each copy so the picture stays put behind the window (after scrolling and resizing)."""
+    def _scrolled(self, page):
+        """A page scrolled: Tk moves its widgets on the next redraw, so fix the pieces now (in the same redraw)
+        instead of a moment later, which showed the old pieces for a frame (ghosting)."""
+        if self.photo and not self.__dict__.get("busy"):
+            self.busy = True
+            try:
+                self.place(page)
+            finally:
+                self.busy = False
+
+    def place(self, scope=None):
+        """Shift each copy so the picture stays put behind the window (after scrolling and resizing). With scope (a
+        page that just scrolled) only the pieces on that page are redone."""
         if not self.photo:
             return
-        from PIL import Image, ImageDraw, ImageTk
+        from PIL import Image, ImageTk
         ox, oy = self.app.winfo_rootx(), self.app.winfo_rooty()
         H = self.app.winfo_height()
+        dy, name = 0, None
+        if scope is not None:
+            try:  # where the page is after the scroll; its widgets still report the old place until the redraw
+                cv = scope._parent_canvas
+                dy = cv.winfo_rooty() - int(cv.canvasy(0)) - scope.winfo_rooty()
+            except tkinter.TclError:
+                return
+            name = str(scope)
+        def mine(w):
+            p = str(w)
+            return name is None or p == name or p.startswith(name + ".")
+        def ry(w):
+            return w.winfo_rooty() + (dy if name and mine(w) else 0)
         for frame, (lbl, kind) in list(self.layers.items()):
             if not frame.winfo_exists() or not lbl.winfo_exists():
                 del self.layers[frame]
                 continue
-            lbl.place(x=ox - frame.winfo_rootx(), y=oy - frame.winfo_rooty())
+            lbl.place(x=ox - frame.winfo_rootx(), y=oy - ry(frame))
         for cv, (item, top, kind) in list(self.items.items()):
             if not cv.winfo_exists():
                 del self.items[cv]
                 continue
-            cv.coords(item, cv.canvasx(ox - cv.winfo_rootx()), cv.canvasy(oy - cv.winfo_rooty()))
-            self._restack(cv)  # customtkinter may restack its shapes on redraw
+            cv.coords(item, cv.canvasx(ox - cv.winfo_rootx()), cv.canvasy(oy - ry(cv)))
+            if name is None or getattr(cv, "_bg_keep", None):
+                self._restack(cv)  # customtkinter may restack its shapes on redraw
         for card, (item, last) in list(self.cards.items()):
-            if not card.winfo_exists():
+            if not card.winfo_exists() or not card._canvas.winfo_exists():  # (being destroyed)
                 del self.cards[card]
                 continue
-            x, y, w, h = card.winfo_rootx() - ox, card.winfo_rooty() - oy, card.winfo_width(), card.winfo_height()
+            if not mine(card):
+                continue
+            x, y, w, h = card.winfo_rootx() - ox, ry(card) - oy, card.winfo_width(), card.winfo_height()
             cv = card._canvas
             if w > 2 and h > 2 and y + h > 0 and y < H and (x, y, w, h) != last:
                 r = int(card.cget("corner_radius") * card._get_widget_scaling())
-                piece = self.img["glass"].crop((x, y, x + w, y + h)).convert("RGBA")
+                piece = self._im(self._surface(card) or theme.CARD).crop((x, y, x + w, y + h)).convert("RGBA")
                 if r:
                     piece.putalpha(self._mask(w, h, r))
                 card._bg_photo = ImageTk.PhotoImage(piece)
@@ -312,13 +392,15 @@ class Background:
                 cv.tag_raise(item)
                 cv.tag_raise("border_parts")  # the accent border in widget edit mode stays visible
         def avg(kind, x, y, w, h):
-            r, g, b = self.img[kind].crop((x, y, x + max(1, w), y + max(1, h))).resize((1, 1), Image.BOX).getpixel((0, 0))
+            r, g, b = self._im(kind).crop((x, y, x + max(1, w), y + max(1, h))).resize((1, 1), Image.BOX).getpixel((0, 0))
             return "#%02x%02x%02x" % (r, g, b)
         for wdg, (kind, last) in list(self.fills.items()):
             if not wdg.winfo_exists():
                 del self.fills[wdg]
                 continue
-            x, y, w, h = wdg.winfo_rootx() - ox, wdg.winfo_rooty() - oy, wdg.winfo_width(), wdg.winfo_height()
+            if not mine(wdg):
+                continue
+            x, y, w, h = wdg.winfo_rootx() - ox, ry(wdg) - oy, wdg.winfo_width(), wdg.winfo_height()
             if (x, y, w, h) != last and y + h > 0 and y < H:
                 tkinter.Frame.configure(wdg, bg=avg(kind, x, y, w, h))
                 self.fills[wdg] = (kind, (x, y, w, h))
@@ -326,17 +408,19 @@ class Background:
             if not inner.winfo_exists():
                 del self.texts[inner]
                 continue
+            if not mine(inner):
+                continue
             owner = getattr(inner.master, "_canvas", None)
             if owner is not None and getattr(owner, "_bg_owner", None) is not None and (
                     self._hovered(owner._bg_owner, owner) or owner._bg_owner.cget("fg_color") != "transparent"):
                 self.texts[inner] = (inner, kind, None)
                 continue  # hovered / selected button: customtkinter colors its label
-            x, y = inner.winfo_rootx() - ox, inner.winfo_rooty() - oy
+            x, y = inner.winfo_rootx() - ox, ry(inner) - oy
             w, h = inner.winfo_width(), inner.winfo_height()
             if (x, y, w, h) == last or y + h < 0 or y > H:  # unchanged or off screen
                 continue
             self.texts[inner] = (inner, kind, (x, y, w, h))
-            piece = self.img[kind].crop((x, y, x + max(1, w), y + max(1, h)))
+            piece = self._im(kind).crop((x, y, x + max(1, w), y + max(1, h)))
             if inner._bg_plain or w < 3:
                 r, g, b = piece.resize((1, 1), Image.BOX).getpixel((0, 0))
                 inner.configure(bg="#%02x%02x%02x" % (r, g, b))

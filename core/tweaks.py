@@ -5,10 +5,15 @@ from .reg import HKCU, HKLM, delete, get, set_value, values
 GAMEDVR = r"Software\Microsoft\Windows\CurrentVersion\GameDVR"
 EDGE = r"SOFTWARE\Policies\Microsoft\Edge"
 CHROME = r"SOFTWARE\Policies\Google\Chrome"
+DO = r"SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization"
 TWEAKS = {
     "Game Mode": ([(HKCU, r"Software\Microsoft\GameBar", "AutoGameModeEnabled")], 1, 0, False),
     "HW-accelerated GPU scheduling": ([(HKLM, r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode")],
                                       2, 1, True),
+    "Background game recording": ([(HKCU, GAMEDVR, "HistoricalCaptureEnabled")], 1, 0, False),
+    "Game Bar captures": ([(HKCU, GAMEDVR, "AppCaptureEnabled"), (HKCU, r"System\GameConfigStore", "GameDVR_Enabled")],
+                          1, 0, False),
+    "Share updates with other PCs": ([(HKLM, DO, "DODownloadMode")], 1, 0, False),
     "Edge startup boost": ([(HKLM, EDGE, "StartupBoostEnabled")], 1, 0, False),
     "Edge background mode": ([(HKLM, EDGE, "BackgroundModeEnabled")], 1, 0, False),
     "Edge sleeping tabs": ([(HKLM, EDGE, "SleepingTabsEnabled")], 1, 0, False),

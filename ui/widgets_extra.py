@@ -32,7 +32,7 @@ def clock_widget(app, body):
                 if d:  # plain tk labels: no extra padding, so the month fits a small widget
                     on = d == today.day
                     tk.Label(cal, text=str(d), font=(FONT[0], 8, "bold" if on else "normal"), width=3,
-                             fg=ON_ACCENT if on else TEXT, bg=ACCENT if on else CARD).grid(row=r, column=c, pady=1)
+                             fg=ON_ACCENT if on else TEXT, bg=ACCENT if on else CARD).grid(row=r, column=c)
     def tick():
         n = datetime.datetime.now()
         now.configure(text=n.strftime("%H:%M"))

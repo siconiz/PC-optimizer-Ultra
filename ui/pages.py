@@ -267,6 +267,11 @@ def browser_policies(app, p):
 def windows(app, p):
     body = app.card(p, t("Windows settings"))
     _tweak_switch(app, body, "Game Mode", t("Stops Windows Update driver installs and restart prompts while gaming."))
+    _tweak_switch(app, body, "Background game recording", t("Keeps recording the last minutes of every game. Off "
+                  "saves FPS; Win+Alt+R still records on demand."))
+    _tweak_switch(app, body, "Game Bar captures", t("Off turns off all Game Bar screenshots and recordings."))
+    _tweak_switch(app, body, "Share updates with other PCs", t("Off: Windows Update downloads only from Microsoft and "
+                  "does not upload to other PCs."))
     body = app.card(p, t("Memory integrity (Core isolation)"), t("A Windows security feature that blocks malicious "
                     "or unsigned drivers. Microsoft notes it can reduce performance in some games. Turning it off "
                     "lowers your protection: only do it if you understand the risk, and turn it back on after gaming."))
@@ -503,6 +508,14 @@ def _background(app, body):
     s.set(c.get("strength", bgimage.STRENGTH))
     s.bind("<ButtonRelease-1>", lambda e: app.background.set(c["path"], round(s.get(), 2)))
     s.pack(side="right")
+    r3 = app.row(body, (6, 0))
+    app.label(r3, t("Picture position"), 13).pack(side="left")
+    app.tip(r3, t("Shows a higher or lower part of the picture (a more left or right part for wide pictures)."))
+    ps = ctk.CTkSlider(r3, from_=0, to=1, width=220, progress_color=ACCENT, button_color=ACCENT,
+                       button_hover_color=ACCENT)
+    ps.set(c.get("pos", bgimage.POS))
+    ps.bind("<ButtonRelease-1>", lambda e: app.background.set(c["path"], pos=round(ps.get(), 2)))
+    ps.pack(side="right")
 
 def _ultimate(app, body):
     """Microsoft's hidden Ultimate Performance power plan (Windows 10 1803 and later)."""

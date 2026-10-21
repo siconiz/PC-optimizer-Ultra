@@ -77,7 +77,8 @@ def _free(boxes, w, h):
         y += 1
 
 def _resolve(boxes, moved):
-    """Widgets that overlap get pushed down, the one just moved keeps its place (like iOS)."""
+    """Widgets that overlap get pushed down, the one just moved keeps its place; then every widget moves up into
+    the space above it (like iOS), so removing or shrinking a widget closes the gap."""
     order = sorted(boxes, key=lambda k: (k != moved, boxes[k]["y"], boxes[k]["x"]))
     placed = []
     for k in order:
@@ -85,6 +86,10 @@ def _resolve(boxes, moved):
         while any(_hit(b, boxes[o]) for o in placed):
             b["y"] += 1
         placed.append(k)
+    for k in sorted(boxes, key=lambda k: (boxes[k]["y"], boxes[k]["x"])):
+        b = boxes[k]
+        while b["y"] > 0 and not any(_hit(dict(b, y=b["y"] - 1), boxes[o]) for o in boxes if o != k):
+            b["y"] -= 1
 
 def _save_box(app, wid, **kw):
     boxes = _boxes(app)
@@ -156,12 +161,31 @@ def _layout(app):
     if getattr(app, "background", None):
         app.after(60, app.background.place)
 
+class _Ghost:
+    """Where a dragged widget will land: only an outline, so the widgets under it stay visible."""
+    def __init__(self, parent):
+        self.lines = [tkinter.Frame(parent, bg=ACCENT, bd=0, highlightthickness=0) for _ in range(4)]
+
+    def put(self, x, y, width, height, t=2):
+        for f, kw in zip(self.lines, (dict(x=x, y=y, width=width, height=t), dict(x=x, y=y + height - t, width=width,
+                         height=t), dict(x=x, y=y, width=t, height=height), dict(x=x + width - t, y=y, width=t,
+                         height=height))):
+            tkinter.Place.place_configure(f, **kw)
+
+    def lift(self):
+        for f in self.lines:
+            f.lift()
+
+    def destroy(self):
+        for f in self.lines:
+            f.destroy()
+
 def _ghost(app):
-    return ctk.CTkFrame(app.dash, fg_color="transparent", border_width=2, border_color=ACCENT, corner_radius=14)
+    return _Ghost(app.dash)
 
 def _place(w, **kw):
     """Plain Tk place (pixels): customtkinter's place() refuses width / height."""
-    tkinter.Place.place_configure(w, **kw)
+    w.put(**kw) if isinstance(w, _Ghost) else tkinter.Place.place_configure(w, **kw)
 
 def _unit(app):
     """Row height in screen pixels (follows Windows display scaling)."""

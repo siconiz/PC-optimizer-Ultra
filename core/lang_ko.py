@@ -843,6 +843,19 @@ KO = {
     "The picture behind this app's pages (not the Windows wallpaper). Click a recent picture from Downloads or Pictures, or choose any file.": '이 앱 화면 뒤에 보이는 사진입니다(Windows 바탕화면이 아님). 다운로드·사진 폴더의 최근 사진을 누르거나 파일을 직접 고르세요.',
     'Looking for pictures...': '사진을 찾는 중...',
     'No pictures in Downloads or Pictures yet.': '다운로드·사진 폴더에 사진이 없습니다.',
+    # v1.3.1
+    'Background game recording': '백그라운드 게임 녹화',
+    'Game Bar captures': 'Game Bar 캡처',
+    'Share updates with other PCs': '다른 PC와 업데이트 공유',
+    'Keeps recording the last minutes of every game. Off saves FPS; Win+Alt+R still records on demand.': '게임마다 마지막 몇 분을 계속 녹화합니다. 끄면 FPS가 절약되고, Win+Alt+R 녹화는 그대로 됩니다.',
+    'Off turns off all Game Bar screenshots and recordings.': '끄면 Game Bar 스크린샷과 녹화가 모두 꺼집니다.',
+    'Off: Windows Update downloads only from Microsoft and does not upload to other PCs.': '끄면 Windows 업데이트를 Microsoft에서만 받고, 다른 PC로 올려 보내지 않습니다.',
+    'Turn off background game recording': '백그라운드 게임 녹화 끄기',
+    'Windows keeps recording the last minutes of every game, which costs FPS. Win+Alt+R still records on demand.': 'Windows가 게임마다 마지막 몇 분을 계속 녹화해 FPS가 떨어집니다. Win+Alt+R 녹화는 그대로 됩니다.',
+    'Stop sharing updates with other PCs': '다른 PC와 업데이트 공유 중지',
+    'Windows Update downloads only from Microsoft and stops uploading updates to other PCs in the background.': 'Windows 업데이트를 Microsoft에서만 받고, 백그라운드에서 다른 PC로 업데이트를 올려 보내지 않습니다.',
+    'Picture position': '사진 위치',
+    'Shows a higher or lower part of the picture (a more left or right part for wide pictures).': '사진의 위쪽·아래쪽 부분을 보여 줍니다(가로로 긴 사진은 왼쪽·오른쪽).',
 }
 
 NAME = "한국어"  # language selector label

@@ -18,6 +18,14 @@ def run(cfg):
         if tweaks.state("Game Mode") == "off":
             out.append(_item(t("Turn on Game Mode"), t("Stops driver installs and restart prompts while gaming."),
                              lambda: tweaks.apply("Game Mode", True)))
+        if tweaks.state("Background game recording") == "on":
+            out.append(_item(t("Turn off background game recording"), t("Windows keeps recording the last minutes of "
+                             "every game, which costs FPS. Win+Alt+R still records on demand."),
+                             lambda: tweaks.apply("Background game recording", False)))
+        if tweaks.state("Share updates with other PCs") != "off":
+            out.append(_item(t("Stop sharing updates with other PCs"), t("Windows Update downloads only from Microsoft "
+                             "and stops uploading updates to other PCs in the background."),
+                             lambda: tweaks.apply("Share updates with other PCs", False), on=False))
         if not gpu.windowed_opt():
             out.append(_item(t("Turn on optimizations for windowed games"),
                              t("Lower latency, Auto HDR and VRR in windowed and borderless games."),
