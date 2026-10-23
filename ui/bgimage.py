@@ -23,10 +23,23 @@ class Background:
     def __init__(self, app):
         self.app, self.src = app, None
         self.pic = None                     # the blurred picture at window size
+        self._key = None
         self.img, self.photo = {}, {}       # kind ('open' or a surface color) -> PIL image / PhotoImage of the window
         self.layers, self.items, self.texts, self.cards, self.fills = {}, {}, {}, {}, {}
-        app.bind("<Configure>", lambda e: self._later(self._build, 250) if e.widget is app else None, add="+")
+        app.bind("<Configure>", self._on_root, add="+")
         self._tick()
+
+    def _on_root(self, e):
+        """The window moved or was resized. Moving only needs the pieces put in place again; the picture is redone
+        when the size changes (not on every move, which made dragging the window stutter)."""
+        if e.widget is not self.app:
+            return
+        size = (e.width, e.height)
+        if size != getattr(self, "_size", None):
+            self._size = size
+            self._later(self._build, 250)
+        else:
+            self._later(self.place, 30)
 
     # ---------- settings ----------
     def set(self, path, strength=None, pos=None):
@@ -57,7 +70,7 @@ class Background:
             page = getattr(self.app, "pages", {}).get(getattr(self.app, "current", None))
             if page is not None:
                 self.paint(page, quiet=True)
-        self.app.after(1000, self._tick)
+        self.app.after(2000, self._tick)
 
     # ---------- the picture ----------
     def _build(self):
@@ -74,13 +87,22 @@ class Background:
                 self.src = Image.open(c["path"]).convert("RGB")
             except Exception:
                 return self.clear()
-        sw, sh = self.src.size
-        k = max(w / sw, h / sh)
-        img = self.src.resize((max(w, int(sw * k)), max(h, int(sh * k))), Image.LANCZOS)
-        pos = c.get("pos")  # which part shows where the picture is cut: 0 = top / left, 1 = bottom / right
-        left = int((img.width - w) * (0.5 if pos is None else pos))
-        top = int((img.height - h) * (POS if pos is None else pos))
-        self.pic = img.crop((left, top, left + w, top + h)).filter(ImageFilter.GaussianBlur(BLUR))
+        key = (w, h, c["path"], c.get("pos"), c.get("strength"))
+        if key == self._key and self.photo:  # same size, picture and strength: only the pieces need moving
+            self.paint(self.app)
+            return self._later(self.place, 20)
+        if key != self._key:
+            self._key = key
+            sw, sh = self.src.size
+            k = max(w / sw, h / sh)
+            # The picture is blurred anyway, so work on a quarter size and scale it back up: about 15x faster.
+            q = 4
+            small = self.src.resize((max(1, int(sw * k / q)), max(1, int(sh * k / q))), Image.BILINEAR)
+            pos = c.get("pos")  # which part shows where the picture is cut: 0 = top / left, 1 = bottom / right
+            left = int((small.width - w // q) * (0.5 if pos is None else pos))
+            top = int((small.height - h // q) * (POS if pos is None else pos))
+            small = small.crop((left, top, left + w // q, top + h // q)).filter(ImageFilter.GaussianBlur(BLUR / q))
+            self.pic = small.resize((w, h), Image.BILINEAR)
         self.img, self.photo = {}, {}
         self._ph("open")
         for frame, (lbl, kind) in self.layers.items():
