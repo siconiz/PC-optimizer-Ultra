@@ -158,6 +158,9 @@ class Background:
         for card, (item, _) in self.cards.items():
             if card.winfo_exists():
                 card._canvas.delete(item)
+                for corner, _ in getattr(card, "_bg_corners", []):
+                    card._canvas.delete(corner)
+                card._bg_corners = None
         for inner, _, _ in self.texts.values():
             if inner.winfo_exists():
                 inner.configure(bg=inner._bg_orig) if inner._bg_plain else inner.configure(image="")
@@ -274,6 +277,28 @@ class Background:
             self.app.after_idle(self.place)
             self.app.after(400, self.place)  # again once the new widgets have their final size
 
+    def _corners(self, card, cv, x, y, w, h, r):
+        """Rounded corners of a card picture. Transparent pixels make Tk redraw slowly on every scroll, so the card
+        picture is opaque and square; the four corners outside the rounded shape are small pictures of the open page
+        (transparent inside the shape, where the card picture shows)."""
+        from PIL import Image, ImageOps, ImageTk
+        mask = self._mask(w, h, r)
+        open_im = self._im("open")
+        spots = [(0, 0, (0, 0, r, r)), (w - r, 0, (w - r, 0, w, r)),
+                 (0, h - r, (0, h - r, r, h)), (w - r, h - r, (w - r, h - r, w, h))]
+        corners = getattr(card, "_bg_corners", None)
+        if corners is None or len(corners) != 4:
+            corners = card._bg_corners = [[cv.create_image(0, 0, anchor="nw"), None] for _ in spots]
+        for (dx, dy, box), entry in zip(spots, corners):
+            rgba = open_im.crop((x + dx, y + dy, x + dx + r, y + dy + r)).convert("RGBA")
+            rgba.putalpha(ImageOps.invert(mask.crop(box)))
+            if entry[1] is None or entry[1].width() != r:
+                entry[1] = ImageTk.PhotoImage(rgba)
+                cv.itemconfigure(entry[0], image=entry[1])
+            else:
+                entry[1].paste(rgba)
+            cv.coords(entry[0], dx, dy)
+
     def _layer(self, frame, kind):
         """Plain Tk frame (the window, the inside of a scrolling page): a label with the picture under its children."""
         if frame in self.layers and self.layers[frame][0].winfo_exists():
@@ -383,10 +408,13 @@ class Background:
             if not frame.winfo_exists() or not lbl.winfo_exists():
                 del self.layers[frame]
                 continue
-            lbl.place(x=ox - frame.winfo_rootx(), y=oy - ry(frame))
+            if mine(frame):  # a scroll moves only its own page: the other pages' pieces did not move
+                lbl.place(x=ox - frame.winfo_rootx(), y=oy - ry(frame))
         for cv, (item, top, kind) in list(self.items.items()):
             if not cv.winfo_exists():
                 del self.items[cv]
+                continue
+            if not mine(cv):
                 continue
             cv.coords(item, cv.canvasx(ox - cv.winfo_rootx()), cv.canvasy(oy - ry(cv)))
             if name is None or getattr(cv, "_bg_keep", None):
@@ -399,19 +427,23 @@ class Background:
                 continue
             x, y, w, h = card.winfo_rootx() - ox, ry(card) - oy, card.winfo_width(), card.winfo_height()
             cv = card._canvas
-            if w > 2 and h > 2 and y + h > 0 and y < H and (x, y, w, h) != last:
+            if w > 2 and h > 2 and y + h > 0 and y < H:  # on screen
+                col = self._surface(card) or theme.CARD
                 r = int(card.cget("corner_radius") * card._get_widget_scaling())
-                piece = self._im(self._surface(card) or theme.CARD).crop((x, y, x + w, y + h)).convert("RGBA")
-                if r:
-                    piece.putalpha(self._mask(w, h, r))
-                card._bg_photo = ImageTk.PhotoImage(piece)
                 if item is None:
-                    item = cv.create_image(0, 0, image=card._bg_photo, anchor="nw")
-                else:
-                    cv.itemconfigure(item, image=card._bg_photo)
+                    item = cv.create_image(0, 0, image=self._ph(col), anchor="nw")
+                elif last is None:  # rebuilt picture: the item must show the new one
+                    cv.itemconfigure(item, image=self._ph(col))
+                # the card's piece is the window-size frosted picture, moved so it lines up behind the window
+                # (like the other pieces): moving costs no new image on a scroll
+                cv.coords(item, cv.canvasx(ox - cv.winfo_rootx()), cv.canvasy(oy - ry(cv)))
+                if r and (x, y, w, h) != last:
+                    self._corners(card, cv, x, y, w, h, r)
                 self.cards[card] = (item, (x, y, w, h))
             if item is not None:
                 cv.tag_raise(item)
+                for corner, _ in getattr(card, "_bg_corners", []):
+                    cv.tag_raise(corner)
                 cv.tag_raise("border_parts")  # the accent border in widget edit mode stays visible
         def avg(kind, x, y, w, h):
             r, g, b = self._im(kind).crop((x, y, x + max(1, w), y + max(1, h))).resize((1, 1), Image.BOX).getpixel((0, 0))
