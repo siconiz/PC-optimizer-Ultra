@@ -30,16 +30,14 @@ class Background:
         self._tick()
 
     def _on_root(self, e):
-        """The window moved or was resized. Moving only needs the pieces put in place again; the picture is redone
-        when the size changes (not on every move, which made dragging the window stutter)."""
+        """The window was resized: redo the picture. Every piece is placed relative to the window, so a move needs
+        nothing at all (placing them again on every move repainted the whole window and made dragging stutter)."""
         if e.widget is not self.app:
             return
         size = (e.width, e.height)
         if size != getattr(self, "_size", None):
             self._size = size
             self._later(self._build, 250)
-        else:
-            self._later(self.place, 30)
 
     # ---------- settings ----------
     def set(self, path, strength=None, pos=None):
@@ -164,6 +162,7 @@ class Background:
         for inner, _, _ in self.texts.values():
             if inner.winfo_exists():
                 inner.configure(bg=inner._bg_orig) if inner._bg_plain else inner.configure(image="")
+                inner._bg_photo = None
         had = bool(self.photo)
         self.layers, self.items, self.texts, self.cards, self.img, self.photo = {}, {}, {}, {}, {}, {}
         self.fills, self.pic = {}, None
@@ -207,6 +206,7 @@ class Background:
                     w._bg_hooked = True
                     bar = w._scrollbar
                     w._parent_canvas.configure(yscrollcommand=lambda a, b, w=w: (bar.set(a, b), self._scrolled(w)))
+                    self._smooth(w)
             elif isinstance(w, ctk.CTkFrame):
                 col = self._surface(w)
                 if col:  # card, sidebar, tile, table box: frosted picture inside the rounded shape
@@ -313,9 +313,25 @@ class Background:
         if cv not in self.items:
             self.items[cv] = (cv.create_image(0, 0, image=self._ph(kind), anchor="nw"), top, kind)
         item, top, _ = self.items[cv]
+        self._stack(cv, item, top)
+
+    @staticmethod
+    def _stack(cv, item, top):
+        """Raise or lower the picture only when it is not already there: every raise repaints the whole canvas, and
+        the page check every 2 seconds and each button hover did it for every canvas in the window."""
+        keep = cv.find_withtag(cv._bg_keep) if getattr(cv, "_bg_keep", None) else ()
+        order = [i for i in cv.find_all() if i not in keep]
+        if order and order[-1 if top else 0] == item and tuple(cv.find_all()[len(order):]) == tuple(keep):
+            return
         (cv.tag_raise if top else cv.tag_lower)(item)
-        if getattr(cv, "_bg_keep", None):
+        if keep:
             cv.tag_raise(cv._bg_keep)
+
+    @staticmethod
+    def _move(cv, item, x, y):
+        """Move a piece only when its place changed (moving repaints it)."""
+        if tuple(cv.coords(item)) != (float(x), float(y)):
+            cv.coords(item, x, y)
 
     def _restack(self, cv):
         """Picture over the shapes (open areas, transparent buttons) or under them (corners only). A transparent
@@ -326,9 +342,7 @@ class Background:
         owner = getattr(cv, "_bg_owner", None)
         if owner is not None:
             top = owner.cget("fg_color") == "transparent" and not self._hovered(owner, cv)
-        (cv.tag_raise if top else cv.tag_lower)(item)
-        if getattr(cv, "_bg_keep", None):
-            cv.tag_raise(cv._bg_keep)  # the scrollbar redraws its handle just above the track: put it over the picture
+        self._stack(cv, item, top)  # (the scrollbar redraws its handle just above the track: it is put over the picture)
         lbl = getattr(owner, "_text_label", None) if owner is not None else None
         if lbl is not None and lbl in self.texts:
             self.texts[lbl] = (lbl, kind, None)  # customtkinter recolors it on every redraw: color it again
@@ -383,6 +397,32 @@ class Background:
             finally:
                 self.busy = False
 
+    def _smooth(self, page):
+        """Windows moves a scrolled page by copying its old pixels and repaints the pictures a moment later, so the
+        old pieces show for a frame (ghosting). Scroll with drawing switched off and show the finished page at once."""
+        import sys
+        if sys.platform != "win32":
+            return
+        import ctypes
+        user32, cv = ctypes.windll.user32, page._parent_canvas
+        orig = cv.yview
+        def yview(*a):
+            if not a or not self.photo or self.__dict__.get("frozen"):
+                return orig(*a)
+            hwnd = page._parent_frame.winfo_id()
+            self.frozen = True
+            user32.SendMessageW(hwnd, 0x000B, 0, 0)  # WM_SETREDRAW off (also for the child windows)
+            try:
+                r = orig(*a)
+                self.app.update_idletasks()  # the page and its pieces move while nothing is drawn
+            finally:
+                user32.SendMessageW(hwnd, 0x000B, 1, 0)
+                user32.RedrawWindow(hwnd, None, None, 0x0001 | 0x0080 | 0x0100)  # INVALIDATE | ALLCHILDREN | UPDATENOW
+                self.frozen = False
+            return r
+        cv.yview = yview  # the mouse wheel looks this up on every scroll
+        page._scrollbar.configure(command=yview)  # the scrollbar kept the original method
+
     def place(self, scope=None):
         """Shift each copy so the picture stays put behind the window (after scrolling and resizing). With scope (a
         page that just scrolled) only the pieces on that page are redone."""
@@ -416,7 +456,7 @@ class Background:
                 continue
             if not mine(cv):
                 continue
-            cv.coords(item, cv.canvasx(ox - cv.winfo_rootx()), cv.canvasy(oy - ry(cv)))
+            self._move(cv, item, cv.canvasx(ox - cv.winfo_rootx()), cv.canvasy(oy - ry(cv)))
             if name is None or getattr(cv, "_bg_keep", None):
                 self._restack(cv)  # customtkinter may restack its shapes on redraw
         for card, (item, last) in list(self.cards.items()):
@@ -436,15 +476,17 @@ class Background:
                     cv.itemconfigure(item, image=self._ph(col))
                 # the card's piece is the window-size frosted picture, moved so it lines up behind the window
                 # (like the other pieces): moving costs no new image on a scroll
-                cv.coords(item, cv.canvasx(ox - cv.winfo_rootx()), cv.canvasy(oy - ry(cv)))
+                self._move(cv, item, cv.canvasx(ox - cv.winfo_rootx()), cv.canvasy(oy - ry(cv)))
                 if r and (x, y, w, h) != last:
                     self._corners(card, cv, x, y, w, h, r)
                 self.cards[card] = (item, (x, y, w, h))
             if item is not None:
-                cv.tag_raise(item)
-                for corner, _ in getattr(card, "_bg_corners", []):
-                    cv.tag_raise(corner)
-                cv.tag_raise("border_parts")  # the accent border in widget edit mode stays visible
+                want = [item] + [c for c, _ in getattr(card, "_bg_corners", None) or []]
+                border = set(cv.find_withtag("border_parts"))
+                if [i for i in cv.find_all() if i not in border][-len(want):] != want:  # raise only when covered
+                    for i in want:
+                        cv.tag_raise(i)
+                    cv.tag_raise("border_parts")  # the accent border in widget edit mode stays visible
         def avg(kind, x, y, w, h):
             r, g, b = self._im(kind).crop((x, y, x + max(1, w), y + max(1, h))).resize((1, 1), Image.BOX).getpixel((0, 0))
             return "#%02x%02x%02x" % (r, g, b)
@@ -479,5 +521,9 @@ class Background:
                 r, g, b = piece.resize((1, 1), Image.BOX).getpixel((0, 0))
                 inner.configure(bg="#%02x%02x%02x" % (r, g, b))
             else:
-                inner._bg_photo = ImageTk.PhotoImage(piece)
-                inner.configure(image=inner._bg_photo, compound="center")
+                ph = getattr(inner, "_bg_photo", None)
+                if ph is not None and (ph.width(), ph.height()) == piece.size:
+                    ph.paste(piece)  # same size: reuse the image instead of making a new one on every scroll
+                else:
+                    inner._bg_photo = ImageTk.PhotoImage(piece)
+                    inner.configure(image=inner._bg_photo, compound="center")

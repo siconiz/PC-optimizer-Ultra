@@ -71,7 +71,7 @@ Section "${APP}" SecMain
   SectionIn RO
   Call RemoveOldVersion
   SetOutPath "$INSTDIR"
-  File /r "dist/PCOptimizer/*"
+  File /r "dist\PCOptimizer\*"  ; backslashes: makensis on Windows splits File /r paths only at backslashes
   File "LICENSE"
   WriteUninstaller "$INSTDIR\uninstall.exe"
   SetShellVarContext all
