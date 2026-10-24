@@ -8,6 +8,19 @@ def ram_modules():
              "mhz": m.ConfiguredClockSpeed, "part": (m.PartNumber or "").strip()}
             for m in wmi.WMI().Win32_PhysicalMemory()]
 
+def ram_speeds():
+    """[{'rated': Speed, 'running': ConfiguredClockSpeed, 'part': part number}] in MHz. Speed is the module's own
+    report (often the JEDEC base speed, not the XMP/EXPO kit rating); running is what the memory works at now."""
+    import wmi
+    return [{"rated": int(m.Speed or 0), "running": int(m.ConfiguredClockSpeed or 0),
+             "part": (m.PartNumber or "").strip()} for m in wmi.WMI().Win32_PhysicalMemory()]
+
+def cpu_name():
+    """(model name, rated maximum MHz) of the first processor."""
+    import wmi
+    p = wmi.WMI().Win32_Processor()[0]
+    return p.Name.strip(), int(p.MaxClockSpeed or 0)
+
 def refresh_info():
     """(current_hz, best_hz_at_current_resolution, resolution) for the primary display."""
     cur = win32api.EnumDisplaySettings(None, win32con.ENUM_CURRENT_SETTINGS)

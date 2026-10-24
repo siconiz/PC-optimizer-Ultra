@@ -1,5 +1,5 @@
 """Built-in dashboard widgets added in 1.0: clock, network, drive speed, free space, battery."""
-import calendar, datetime
+import calendar, datetime, re
 import customtkinter as ctk
 import psutil
 from core import battery, disk, net
@@ -156,3 +156,80 @@ def battery_widget(app, body):
         sub.configure(text="  ·  ".join(parts))
         warn.configure(text="\n".join(t(m, w=s["wear"]) for m in battery.advice(s)))
     app.every(5000, lambda: app.bg(battery.status, show, lambda m: None), lbl, "Dashboard")
+
+
+def _check(app, body, kind):
+    """The 검사 button: reads the facts in a worker thread and lists the steps for BIOS. Changes nothing."""
+    from core import oc
+    res = app.label(body, "", 12, wrap=400)
+    def done(lines):
+        if res.winfo_exists():
+            btn.configure(state="normal", text=t("Check"))
+            res.configure(text="\n".join("•  " + x for x in lines), text_color=TEXT)
+    def fail(msg):
+        if res.winfo_exists():
+            btn.configure(state="normal", text=t("Check"))
+            res.configure(text=msg, text_color=WARN)
+    def run():
+        btn.configure(state="disabled", text=t("Checking..."))
+        fn = oc.ram_advice if kind == "ram" else oc.cpu_advice
+        app.bg(lambda: fn(oc.facts()), done, fail)
+    btn = app.button(body, t("Check"), run, primary=False, width=90)
+    btn.pack(anchor="w", pady=(8, 0))
+    res.pack(anchor="w", pady=(6, 0))
+
+# ---------- read-only overclock status (nothing here changes a setting) ----------
+def ram_oc_widget(app, body):
+    lbl = app.label(body, "", 13, bold=True)
+    lbl.pack(anchor="w")
+    sub = app.label(body, "", 12, muted=True, wrap=400)
+    sub.pack(anchor="w", pady=(4, 0))
+    def tick():
+        from core import hardware
+        mods = app.cached("ram_speeds", hardware.ram_speeds, [])
+        if not mods:
+            lbl.configure(text=t("No memory information"))
+            return
+        running = min(m["running"] for m in mods)
+        reported = max(m["rated"] for m in mods)
+        lbl.configure(text=t("Running at {mhz} MHz", mhz=running))
+        if reported and running > reported:
+            note = t("Faster than the speed the module reports: an XMP/EXPO profile or a manual overclock is on.")
+        elif reported and running < reported:
+            note = t("Slower than the module reports: the profile is off, or the BIOS limits the speed.")
+        else:
+            note = t("Same as the module reports: no profile is on, or the module's base speed is its rated speed.")
+        parts = sorted({m["part"] for m in mods if m["part"]})
+        sub.configure(text=note + ("  " + t("Module: {part}", part=", ".join(parts)) if parts else ""))
+    _check(app, body, "ram")
+    app.every(3000, tick, lbl, "Dashboard")
+
+_UNLOCKED = re.compile(r"\d{4,5}(KF|K|X3D|XE|X)\b")   # e.g. 14700K, 13900KF, 7800X3D, 7950X
+
+def cpu_oc_widget(app, body):
+    name = app.label(body, "", 13, bold=True, wrap=400)
+    name.pack(anchor="w")
+    clock = app.label(body, "", 13)
+    clock.pack(anchor="w", pady=(6, 0))
+    sub = app.label(body, "", 12, muted=True, wrap=400)
+    sub.pack(anchor="w", pady=(4, 0))
+    def tick():
+        from core import hardware
+        model, rated = app.cached("cpu_name", hardware.cpu_name, ("", 0))
+        if not model:
+            name.configure(text=t("No processor information"))
+            return
+        unlocked = bool(_UNLOCKED.search(model))
+        name.configure(text=model)
+        mhz = app.hw.cpu_clock() if app.hw else None
+        now = t("Average core clock {mhz} MHz", mhz=mhz) if mhz else t("Clock sensor is off (Sensors setting)")
+        clock.configure(text=now + (t("  ·  rated {mhz} MHz", mhz=rated) if rated else ""))
+        if unlocked:
+            hint = t("Unlocked model (K, KF, X). Intel XTU changes the multiplier only on a Z-series chipset; "
+                     "AMD uses Ryzen Master. This app does not change clocks.")
+        else:
+            hint = t("Locked model: the multiplier cannot be raised. The clock still rises above the rated speed "
+                     "on its own (boost).")
+        sub.configure(text=hint)
+    _check(app, body, "cpu")
+    app.every(2000, tick, name, "Dashboard")

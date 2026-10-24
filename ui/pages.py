@@ -134,15 +134,15 @@ def storage(app, p):
         app.bg(work, show)
     refresh()
 
-    body = app.card(p, t("Find unneeded files"), t("Pick a drive. On the Windows drive it scans temp folders, old "
-                    "installers in Downloads and large files you have not touched in months; on other drives, large "
-                    "old files. Nothing is deleted automatically; selected items go to the "
-                    "Recycle Bin. Yellow rows may be personal files - check them first."))
+    body = app.card(p, t("Find unneeded files"), t("Pick a drive. On the Windows drive it scans temp folders, old installers in Downloads, "
+                    "large files you have not touched in months, photos, videos and music, leftover folders of "
+                    "uninstalled apps and game saves. Only temp files and installers are ticked for you; the "
+                    "rest is ticked by you. Nothing is deleted automatically; selected items go to the Recycle Bin."))
     r = app.row(body)
     lbl = app.label(r, "", 12, muted=True)
     tree = app.table(body, [("sel", ""), ("size", t("Size (MB)")), ("age", t("Age (days)")), ("reason", t("Reason")),
                             ("path", t("Path"))], (34, 90, 90, 300, 390), 12,
-                     {"temp": ACCENT, "installer": ACCENT, "large": WARN})
+                     {"temp": ACCENT, "installer": ACCENT, "large": WARN, "media": MUTED, "leftover": WARN, "save": WARN})
     tree.configure(selectmode="none")  # a click ticks a row; several rows can be ticked and removed together
     state = {"c": [], "on": set()}
     def mark(iid):
@@ -159,7 +159,7 @@ def storage(app, p):
         return "break"
     tree.bind("<Button-1>", click)
     def select(which):
-        state["on"] = {x["path"] for x in state["c"] if which == "all" or (which == "safe" and x["kind"] != "large")}
+        state["on"] = {x["path"] for x in state["c"] if which == "all" or (which == "safe" and x["kind"] in ("temp", "installer"))}
         for iid in tree.get_children():
             mark(iid)
         summary()
@@ -181,16 +181,18 @@ def storage(app, p):
         app.bg(lambda: cleaner.scan(pick.get()), fill)
     def trash():
         sel = [x["path"] for x in state["c"] if x["path"] in state["on"]]
-        if sel and app.ask(t("Recycle Bin"), t("Move {n} item(s) to the Recycle Bin?", n=len(sel))):
+        whole = {x["path"] for x in state["c"] if x["kind"] in cleaner.WHOLE_FOLDER}
+        risky = any(x["kind"] in ("save", "leftover") for x in state["c"] if x["path"] in state["on"])
+        if sel and app.ask(t("Recycle Bin"), t("Move {n} item(s) to the Recycle Bin?", n=len(sel)), warn=risky):
             lbl.configure(text=t("Moving to the Recycle Bin..."))
-            app.bg(lambda: cleaner.trash(sel), lambda n: (lbl.configure(text=t("Moved {n} file(s)", n=n)), scan()))
+            app.bg(lambda: cleaner.trash(sel, whole), lambda n: (lbl.configure(text=t("Moved {n} file(s)", n=n)), scan()))
     pick.pack(side="left")
     app.button(r, t("Scan"), scan).pack(side="left", padx=8)
     lbl.pack(side="right")
     r2 = app.row(body, (6, 0))
     app.button(r2, t("Select all"), lambda: select("all"), primary=False, width=90).pack(side="left")
     app.button(r2, t("Select temp files and installers"), lambda: select("safe"), primary=False,
-               tooltip=t("Ticks everything except the yellow rows (large old files that may be yours).")).pack(
+               tooltip=t("Ticks only temp files and old installers. Photos, videos, music, saves and large files are not ticked.")).pack(
         side="left", padx=6)
     app.button(r2, t("Select none"), lambda: select("none"), primary=False, width=90).pack(side="left")
     app.button(r2, t("Move selected to Recycle Bin"), trash).pack(side="right")
