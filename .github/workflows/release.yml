@@ -69,6 +69,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $f = "dist\PCOptimizer-Setup-$env:APP_VERSION.exe"
-          (Get-FileHash $f -Algorithm SHA256).Hash | Out-File "$f.sha256" -Encoding ascii
-          gh release create "${{ github.ref_name }}" $f "$f.sha256" --generate-notes
+          $name = "PCOptimizer-Setup-$env:APP_VERSION.exe"
+          $f = "dist\$name"
+          $fixed = "dist\PCOptimizer-Setup.exe"  # same file under a fixed name: the README links to latest/download/PCOptimizer-Setup.exe
+          Copy-Item $f $fixed
+          $hash = (Get-FileHash $f -Algorithm SHA256).Hash
+          foreach ($x in $f, $fixed) { $hash | Out-File "$x.sha256" -Encoding ascii }
+          $notes = @'
+          ## Download
+
+          **[{name}](https://github.com/{repo}/releases/download/{tag}/{name})** (Windows 10 / 11, 64-bit)
+
+          SHA-256: `{hash}`
+
+          Check it in PowerShell: `(Get-FileHash "$env:USERPROFILE\Downloads\{name}").Hash` must show the same value.
+          The installer is not code-signed yet: if SmartScreen warns, choose **More info** > **Run anyway**.
+          '@
+          $notes = $notes.Replace('{name}', $name).Replace('{repo}', "${{ github.repository }}").Replace('{tag}', "${{ github.ref_name }}").Replace('{hash}', $hash)
+          gh release create "${{ github.ref_name }}" $f "$f.sha256" $fixed "$fixed.sha256" --notes $notes --generate-notes

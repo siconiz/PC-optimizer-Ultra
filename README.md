@@ -4,6 +4,12 @@ Free, open-source Windows toolkit for gaming performance. It only changes standa
 explains each change, and never claims to "speed up" your PC with tricks that do not work
 (such as RAM "cleaning" or registry "cleaning").
 
+### [⬇ Download PCOptimizer-Setup.exe](https://github.com/worldhistorysim/pc-optimizer/releases/latest/download/PCOptimizer-Setup.exe)
+
+Latest version, Windows 10 / 11 (64-bit). Run the downloaded file to install.
+[SHA-256 checksum](https://github.com/worldhistorysim/pc-optimizer/releases/latest/download/PCOptimizer-Setup.exe.sha256)
+· [How to check it](#install) · [All versions](https://github.com/worldhistorysim/pc-optimizer/releases)
+
 ## Features
 
 English and Korean UI (follows the Windows language by default). Advanced options sit under "Advanced settings".
@@ -47,10 +53,18 @@ on `main` must be committed exactly as built.
 
 ## Install
 
-Download `PCOptimizer-Setup-x.y.z.exe` from [Releases](https://github.com/worldhistorysim/pc-optimizer/releases).
-Each release lists a SHA-256 checksum.
+1. Download **[PCOptimizer-Setup.exe](https://github.com/worldhistorysim/pc-optimizer/releases/latest/download/PCOptimizer-Setup.exe)**
+   (always the latest version). Older versions are on the [Releases](https://github.com/worldhistorysim/pc-optimizer/releases) page.
+2. Optional: check that the file is complete and unchanged. In PowerShell run
 
-New releases may show a Windows SmartScreen warning until the installer builds reputation.
+   ```
+   (Get-FileHash "$env:USERPROFILE\Downloads\PCOptimizer-Setup.exe").Hash
+   ```
+
+   and compare the result with [PCOptimizer-Setup.exe.sha256](https://github.com/worldhistorysim/pc-optimizer/releases/latest/download/PCOptimizer-Setup.exe.sha256)
+   (each release page also lists it). If they differ, do not run the file; download it again.
+3. Run the file. The installer is not code-signed yet, so Windows SmartScreen may warn: choose
+   **More info** → **Run anyway**.
 
 Requires Windows 10 or 11 (64-bit). The app asks for administrator rights because it changes system settings.
 
