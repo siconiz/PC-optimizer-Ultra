@@ -206,25 +206,38 @@ def storage(app, p):
                         hover_color=ACCENT).grid(row=i // 5, column=i % 5, sticky="w", padx=(0, 8), pady=2)
     r = app.row(body)
     lbl = app.label(r, "", 12, muted=True)
-    tree = app.table(body, [("sel", ""), ("size", t("Size (MB)")), ("age", t("Age (days)")), ("reason", t("Reason")),
-                            ("path", t("Path"))], (34, 90, 90, 300, 390), 12,
+    tree = app.table(body, [("name", t("Name")), ("size", t("Size (MB)")), ("age", t("Age (days)")),
+                            ("reason", t("Reason")), ("path", t("Path"))], (220, 80, 80, 250, 300), 12,
                      {"temp": ACCENT, "installer": ACCENT, "large": WARN, "video": MUTED, "photo": MUTED,
                       "music": MUTED, "download": MUTED, "personal": WARN, "leftover": WARN, "save": WARN, "ai": ACCENT})
-    tree.configure(selectmode="none")  # a click ticks a row; several rows can be ticked and removed together
+    # the tick box is a picture in the first column (larger than a text symbol); a click there ticks the row,
+    # a double click on the rest of the row opens its folder
+    tree.configure(selectmode="none", show="tree headings")
+    tree.heading("#0", text="")
+    tree.column("#0", width=46, minwidth=46, stretch=False)
+    box = _tick_images(app)
     state = {"c": [], "on": set()}
     def mark(iid):
-        tree.set(iid, "sel", "☑" if iid in state["on"] else "☐")
+        tree.item(iid, image=box[iid in state["on"]])
     def summary():
         mb = sum(x["size_mb"] for x in state["c"] if x["path"] in state["on"])
         lbl.configure(text=t("{n} items, {s} selected ({mb} MB)", n=len(state["c"]), s=len(state["on"]), mb=round(mb)))
     def click(e):
         iid = tree.identify_row(e.y)
-        if iid:
+        if iid and tree.identify_column(e.x) == "#0":
             state["on"].symmetric_difference_update({iid})
             mark(iid)
             summary()
         return "break"
+    def open_folder(e):
+        iid = tree.identify_row(e.y)
+        if iid and tree.identify_column(e.x) != "#0":
+            import subprocess
+            subprocess.Popen(["explorer", "/select,", iid] if os.path.exists(iid) else
+                             ["explorer", os.path.dirname(iid)])
+        return "break"
     tree.bind("<Button-1>", click)
+    tree.bind("<Double-1>", open_folder)
     def select(which):
         state["on"] = {x["path"] for x in state["c"] if which == "all" or (which == "safe" and x["kind"] in ("temp", "installer"))}
         for iid in tree.get_children():
@@ -234,8 +247,9 @@ def storage(app, p):
         state["c"], state["on"] = c, set()
         tree.delete(*tree.get_children())
         for x in sorted(c, key=lambda x: -x["size_mb"]):
-            tree.insert("", "end", iid=x["path"], tags=(x["kind"],),
-                        values=("☐", x["size_mb"], x["age_days"], x["reason"], x["path"]))
+            tree.insert("", "end", iid=x["path"], tags=(x["kind"],), image=box[False], values=(
+                os.path.basename(x["path"].rstrip("\\")) or x["path"], x["size_mb"], x["age_days"], x["reason"],
+                os.path.dirname(x["path"].rstrip("\\"))))
         summary()
     try:
         drives = disk.drives() or ["C:"]
@@ -272,8 +286,29 @@ def storage(app, p):
         side="left", padx=6)
     app.button(r2, t("Select none"), lambda: select("none"), primary=False, width=90).pack(side="left")
     app.button(r2, t("Move selected to Recycle Bin"), trash).pack(side="right")
-    app.tip(tree, t("Click rows to tick them, then move all ticked files to the Recycle Bin at once."))
+    app.tip(tree, t("Click the box to tick a row. Double-click a name to open its folder."))
     _ai_clean(app, body, state, fill_marks=lambda: ([mark(i) for i in tree.get_children()], summary()), tree=tree)
+
+def _tick_images(app):
+    """Unticked / ticked box pictures (22 px at 100% scaling), drawn 4x larger and scaled down for smooth corners."""
+    if "_ticks" not in app.__dict__:
+        from PIL import Image, ImageDraw, ImageTk
+        px = round(22 * app._get_window_scaling())
+        out = []
+        for on in (False, True):
+            S = px * 4
+            im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+            d = ImageDraw.Draw(im)
+            r = (S * 0.06, S * 0.06, S * 0.94, S * 0.94)
+            if on:
+                d.rounded_rectangle(r, radius=S * 0.2, fill=ACCENT)
+                d.line([(S * 0.26, S * 0.52), (S * 0.43, S * 0.69), (S * 0.75, S * 0.33)], fill="#0e1116",
+                       width=round(S * 0.11), joint="curve")
+            else:
+                d.rounded_rectangle(r, radius=S * 0.2, outline=MUTED, width=round(S * 0.08))
+            out.append(ImageTk.PhotoImage(im.resize((px, px), Image.LANCZOS)))
+        app._ticks = out
+    return app._ticks
 
 def _ai_clean(app, body, state, fill_marks, tree):
     """AI picks from the scanned list. Only names, kinds, sizes and ages are sent - never contents or folders."""

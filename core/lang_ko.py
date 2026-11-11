@@ -955,6 +955,7 @@ KO = {
     'Photo': '사진',
     'In Downloads, not opened for a month': '다운로드 폴더, 한 달 넘게 안 바뀜',
     'Your file, not changed for 3 months - check first': '직접 만든 파일, 3개월 넘게 안 바뀜 - 먼저 확인하세요',
+    'Click the box to tick a row. Double-click a name to open its folder.': '네모 칸을 눌러 선택하세요. 이름을 더블클릭하면 그 폴더가 열립니다.',
 }
 
 NAME = "한국어"  # language selector label
