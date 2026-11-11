@@ -4,6 +4,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:  # Actions > release > Run workflow: builds core/version.py's version and creates tag v<version>
+    inputs:
+      publish:
+        description: "Create the GitHub release (off: only keep the installer as a workflow artifact)"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -68,7 +73,15 @@ jobs:
           & $nsis "/DVERSION=$env:APP_VERSION" installer.nsi
           if ($LASTEXITCODE) { throw "makensis failed" }
 
+      - name: Keep the installer as an artifact
+        if: github.event_name != 'push' && !inputs.publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: dist/PCOptimizer-Setup-*.exe
+
       - name: Publish GitHub release
+        if: github.event_name == 'push' || inputs.publish
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
