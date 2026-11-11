@@ -103,4 +103,5 @@ jobs:
           The installer is not code-signed yet: if SmartScreen warns, choose **More info** > **Run anyway**.
           '@
           $notes = $notes.Replace('{name}', $name).Replace('{repo}', "${{ github.repository }}").Replace('{tag}', $env:TAG).Replace('{hash}', $hash)
-          gh release create $env:TAG --target "${{ github.sha }}" $f "$f.sha256" $fixed "$fixed.sha256" --notes $notes --generate-notes
+          $main = gh api "repos/${{ github.repository }}/commits/main" -q .sha  # tag on main: the release carries only the new installer
+          gh release create $env:TAG --target $main $f "$f.sha256" $fixed "$fixed.sha256" --notes $notes --generate-notes
