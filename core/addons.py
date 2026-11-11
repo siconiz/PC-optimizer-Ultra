@@ -18,6 +18,8 @@ CATALOG = {  # id: title, kind, [(file, url or None for this repo, sha256)], ext
               "files": [("audio.py", None, "0f44090638ca34474dde5087cf37ebb3eb6d4511aefe6e865b2795ead5026618")]},
     "input": {"title": "Mouse & keyboard", "kind": "widget",
               "files": [("input.py", None, "6a2eab2a30a5e0da13e814cce7b2618bfbad3e40df353b1a510450dfd575bb35")]},
+    "ai": {"title": "AI optimization", "kind": "page",
+           "files": [("ai.py", None, "06178dd8e0d617baa6a6a4357357124abfd41843d2b35aa85dbf52b1198385be")]},
     "pretendard": {"title": "Pretendard font", "kind": "font", "family": "Pretendard", "license": "SIL OFL 1.1",
                    "files": [("Pretendard-Regular.otf", PRETENDARD,
                               "3ffbacde6ab8411f1d2db54bb9b1f0b3ee2a738932033722cf0388c06aed1c93"),
@@ -29,7 +31,7 @@ def ids(kind):
     return [k for k, v in CATALOG.items() if v["kind"] == kind]
 
 def _dir(aid):
-    return os.path.join(BASE, "widgets" if CATALOG[aid]["kind"] == "widget" else "fonts")
+    return os.path.join(BASE, "fonts" if CATALOG[aid]["kind"] == "font" else "widgets")
 
 def _norm(name, data):
     # text files: same fingerprint whether git checked them out with CRLF or LF
@@ -85,7 +87,7 @@ def download(aid):
             f.write(data)
 
 def load(aid):
-    """Runs a verified widget file; it provides build(app, body)."""
+    """Runs a verified file: a widget provides build(app, body), a page provides page(app, p)."""
     name, _, sha = CATALOG[aid]["files"][0]
     data = _read(aid, name)
     if not _ok(name, data, sha):

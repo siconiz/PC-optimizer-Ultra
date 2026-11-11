@@ -15,11 +15,11 @@ pointer rests on it.
 |---|---|
 | Dashboard | This PC (model, board, BIOS, CPU, RAM slots, graphics driver age, live CPU/RAM/GPU/power), computer scan, and a widget grid (edit mode like iOS / iPad: drag the title to put a widget anywhere on the grid, drag the corner to resize, × to remove). Built-in widgets: clock & calendar, network, drive speed vs. a typical drive, free space, battery (health, power in/out, charger advice), game locations, FPS test, memory, GPUs. Downloadable: wallpaper, display, audio (device types, output switch, app volume, mic mute), mouse & keyboard |
 | App management | Auto optimize (games at maximum performance, separate power modes for charger and battery, background apps in efficiency mode, services paused during games); every installed app with icon and size, grouped by drive or source; run, boost, mark as game, move to another drive, uninstall |
-| AI optimization | Free RAM, VRAM per app, Ollama models / unload / keep-alive / memory-saving settings, model size estimate |
+| AI optimization (download) | Free RAM, VRAM per app, Ollama models / unload / keep-alive / memory-saving settings, model size estimate |
 | CPU & Memory | Running apps: cores, priority, efficiency mode, RAM trim; page file with recommended size |
 | Graphics & Cooling | GPU status, Windows graphics settings, driver 3D settings (NVIDIA via NVAPI, AMD via ADLX, Intel via the Intel Graphics Control Library), cooling policy, power mode, Ultimate Performance plan, temperatures and fan control |
 | Overlay | In-game overlay (FPS, average / 1% low, FPS and frame-time graphs, CPU / GPU / per-core clock, usage, temperature, RAM, VRAM, ping, game time, clock, mic). Items are tiles you switch on or off and drag to reorder; corner presets, exact position, drag with the mouse, any item in its own box, size, box opacity (text stays opaque, 0 = no box), presets; shortcut of your choice (default Ctrl+Shift+O) |
-| Diagnostics | Wi-Fi, ping, DNS, speed test; drive health and speed; temperatures |
+| Diagnostics | Wi-Fi, ping, DNS, speed test; drive health, bad sectors (SMART), power-on time, speed, read-only surface scan; temperatures |
 | Cleanup | Recycle Bin, hibernation file, component cleanup, Windows.old, unneeded files on any drive (tick several and remove at once), browser caches, Edge removal |
 | System | Windows (Game Mode, memory integrity, game boot, background news off, services paused during games), startup apps, notifications and visual effects, browser policies, hardware report |
 | About | Theme, background picture, tooltips, font (Pretendard download), language, updates |
@@ -47,7 +47,7 @@ on `main` must be committed exactly as built.
 
 ## Install
 
-Download `PCOptimizer-Setup-x.y.z.exe` from [Releases](https://github.com/worldhistorysim/pc-optimizer/releases).
+Download `PCOptimizer-Setup-x.y.z.exe` from [Releases](https://github.com/siconiz/PC-optimizer-Ultra/releases).
 Each release lists a SHA-256 checksum.
 
 New releases may show a Windows SmartScreen warning until the installer builds reputation.
@@ -118,7 +118,7 @@ names, IDs and structure layouts from their headers are used; no SDK code is cop
 
 ## Support
 
-If this project helps you, consider [sponsoring it on GitHub](https://github.com/sponsors/worldhistorysim).
+If this project helps you, consider [sponsoring it on GitHub](https://github.com/sponsors/siconiz).
 
 ## License
 

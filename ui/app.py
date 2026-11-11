@@ -39,6 +39,23 @@ def _system(app, p):
     seg.set(t("Windows"))
     show(t("Windows"))
 
+def _ai(app, p):
+    """The AI optimization page is a download: until it is installed, the page offers the download."""
+    from core import addons
+    if addons.installed("ai"):
+        return addons.load("ai").page(app, p)
+    body = app.card(p, t("AI optimization"), t("Tools for local AI apps (Ollama, LM Studio and similar): free RAM and "
+                    "VRAM, unload models, and check whether a model fits. Download it to use it (about 10 KB)."))
+    msg = app.label(body, "", 12, muted=True)
+    def done(_):
+        app.pages.pop("AI optimization").destroy()
+        app.show("AI optimization")
+    def get():
+        msg.configure(text=t("Downloading..."))
+        app.bg(lambda: addons.download("ai"), done, lambda m: msg.configure(text=t("Download failed: {e}", e=m)))
+    app.button(body, t("Download"), get).pack(anchor="w")
+    msg.pack(anchor="w", pady=(6, 0))
+
 def _lazy(module, fn):
     def build(app, p):
         getattr(importlib.import_module(f"ui.{module}"), fn)(app, p)
@@ -46,7 +63,7 @@ def _lazy(module, fn):
 
 # (key, icon, builder): a page's module is imported only when the page is opened the first time
 PAGES = [("Dashboard", "home", _lazy("widgets", "dashboard")), ("App management", "apps", _lazy("boost", "page")),
-         ("AI optimization", "robot", _lazy("ai", "page")), ("CPU & Memory", "cpu", _lazy("cpumem", "page")),
+         ("AI optimization", "robot", _ai), ("CPU & Memory", "cpu", _lazy("cpumem", "page")),
          ("Graphics & Cooling", "monitor", _graphics), ("Overlay", "overlay", _lazy("overlay_ui", "page")),
          ("Diagnostics", "diag", _lazy("diag", "page")), ("Cleanup", "broom", _cleanup),
          ("System", "settings", _system), ("About", "info", _lazy("pages", "about"))]

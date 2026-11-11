@@ -79,7 +79,7 @@ Section "${APP}" SecMain
   WriteRegStr HKLM "${UNINST_KEY}" "DisplayName" "${APP}"
   WriteRegStr HKLM "${UNINST_KEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKLM "${UNINST_KEY}" "Publisher" "PC Optimizer contributors"
-  WriteRegStr HKLM "${UNINST_KEY}" "URLInfoAbout" "https://github.com/worldhistorysim/pc-optimizer"
+  WriteRegStr HKLM "${UNINST_KEY}" "URLInfoAbout" "https://github.com/siconiz/PC-optimizer-Ultra"
   WriteRegStr HKLM "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\${EXE}"
   WriteRegStr HKLM "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "${UNINST_KEY}" "UninstallString" '"$INSTDIR\uninstall.exe"'

@@ -12,8 +12,34 @@ HEALTH = {0: "Healthy", 1: "Warning", 2: "Unhealthy"}
 MEDIA = {3: "HDD", 4: "SSD", 5: "SCM"}
 BUS = {7: "USB", 11: "SATA", 17: "NVMe", 8: "RAID", 10: "SAS"}
 
+SECTORS = (5, 197, 198)  # ATA SMART: reallocated, pending (unstable), offline uncorrectable sectors
+
+def _smart():
+    """{disk number: {attribute id: raw value}} from the drive's SMART table (root\\wmi, needs admin).
+    SATA/ATA drives report it; NVMe drives usually do not (their errors come from the reliability counters)."""
+    import wmi
+    num = {(d.PNPDeviceID or "").upper(): int(d.Index) for d in wmi.WMI().Win32_DiskDrive()}
+    out = {}
+    try:
+        rows = wmi.WMI(namespace=r"root\wmi").MSStorageDriver_FailurePredictData()
+    except Exception:
+        return out
+    for r in rows:
+        n = num.get(r.InstanceName.upper().rsplit("_", 1)[0])  # InstanceName = PNPDeviceID + "_0"
+        b = bytes(r.VendorSpecific or ())
+        if n is None:
+            continue
+        # 2-byte version, then 30 records of 12 bytes: id, flags (2), value, worst, raw (6), reserved
+        out[n] = {b[o]: int.from_bytes(b[o + 5:o + 9], "little")
+                  for o in range(2, min(len(b), 362) - 11, 12) if b[o]}
+    return out
+
 def health():
     import wmi
+    try:
+        smart = _smart()
+    except Exception:
+        smart = {}
     c = wmi.WMI(namespace=r"root\Microsoft\Windows\Storage")
     rel = {}
     try:
@@ -23,10 +49,14 @@ def health():
     out = []
     for d in c.MSFT_PhysicalDisk():
         r = rel.get(d.DeviceId)
-        out.append({"name": d.FriendlyName, "media": MEDIA.get(d.MediaType, "-"), "bus": BUS.get(d.BusType, "-"),
+        a = smart.get(int(d.DeviceId), {}) if str(d.DeviceId).isdigit() else {}
+        out.append({"number": d.DeviceId, "bytes": int(d.Size or 0),
+                    "sectors": {k: a[k] for k in SECTORS if k in a} or None,
+                    "cycles": getattr(r, "StartStopCycleCount", None) or a.get(12),
+                    "name": d.FriendlyName, "media": MEDIA.get(d.MediaType, "-"), "bus": BUS.get(d.BusType, "-"),
                     "size_gb": round(int(d.Size or 0) / 1e9), "health": HEALTH.get(d.HealthStatus, "Unknown"),
                     "temp": getattr(r, "Temperature", None) or None, "wear": getattr(r, "Wear", None),
-                    "hours": getattr(r, "PowerOnHours", None) or None,
+                    "hours": getattr(r, "PowerOnHours", None) or a.get(9) or None,
                     "errors": (getattr(r, "ReadErrorsUncorrected", 0) or 0) + (getattr(r, "WriteErrorsUncorrected", 0) or 0)})
     return out
 
@@ -84,3 +114,34 @@ def bench(drive, size_mb=512, seconds=3):
             "vs_avg": round(read * 100 / avg) if avg else None,
             "rand_mb": round(iops * 4096 / 2**20, 1), "typical": (lo, hi),
             "verdict": "Unknown" if not lo else "Slow" if read < lo * 0.7 else "Normal"}
+
+def surface_scan(number, size, state, block=1 << 20):
+    """Reads the whole disk once, 1 MiB at a time, without writing anything. Blocks that cannot be read are bad
+    sectors; blocks that take over 0.5 s mean the drive had to retry. `state` is shared with the UI:
+    total, done, bad (byte offsets), slow, stop."""
+    k32 = ctypes.windll.kernel32
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.VirtualAlloc.restype = ctypes.c_void_p
+    # GENERIC_READ, share read+write, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING (reads the disk, not the cache)
+    h = k32.CreateFileW(rf"\\.\PhysicalDrive{number}", 0x80000000, 3, None, 3, 0x20000000, None)
+    if h in (None, wintypes.HANDLE(-1).value):
+        raise ctypes.WinError()
+    buf = k32.VirtualAlloc(None, block, 0x3000, 0x04)
+    state.update(total=size // block, done=0, bad=[], slow=0)
+    try:
+        for i in range(state["total"]):
+            if state.get("stop"):
+                break
+            _seek(h, i * block)
+            t0 = time.perf_counter()
+            try:
+                _io(h, buf, block, False)
+                if time.perf_counter() - t0 > 0.5:
+                    state["slow"] += 1
+            except OSError:
+                state["bad"].append(i * block)
+            state["done"] = i + 1
+    finally:
+        k32.CloseHandle(wintypes.HANDLE(h))
+        k32.VirtualFree(ctypes.c_void_p(buf), 0, 0x8000)
+    return state

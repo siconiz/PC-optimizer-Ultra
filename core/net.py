@@ -9,7 +9,7 @@ DNS_SERVERS = {"Cloudflare": "1.1.1.1", "Google": "8.8.8.8", "Quad9": "9.9.9.9"}
 SPEED_URL = "https://speed.cloudflare.com/__down?bytes={n}"
 UPLOAD_URL = "https://speed.cloudflare.com/__up"
 DOWN_BYTES, UP_BYTES = 10_485_760, 2_000_000  # per request; uploads small enough for slow links to finish
-USER_AGENT = "PCOptimizer/1.0 (+https://github.com/worldhistorysim/pc-optimizer)"
+USER_AGENT = "PCOptimizer/1.0 (+https://github.com/siconiz/PC-optimizer-Ultra)"
 
 class GUID(ctypes.Structure):
     _fields_ = [("a", ctypes.c_ulong), ("b", ctypes.c_ushort), ("c", ctypes.c_ushort), ("d", ctypes.c_ubyte * 8)]
