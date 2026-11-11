@@ -33,6 +33,19 @@ def page(app, p):
                       "The app in front and Windows itself are not touched. Use it before loading a large game or AI "
                       "model; background apps may react a little slower the next time you switch to them."),
               12, muted=True, wrap=820).pack(anchor="w", pady=(6, 0))
+    r = app.row(body, (8, 0))
+    app.label(r, t("Free up RAM automatically"), 13).pack(side="left")
+    every = {t("Off"): 0, t("Every 30 minutes"): 30, t("Every hour"): 60, t("Every 2 hours"): 120,
+             t("Every 4 hours"): 240}
+    def set_every(v):
+        app.cfg["ram_every"] = every[v]
+        app._ram_at = __import__("time").monotonic()
+        app.save()
+    seg = app.seg(r, list(every), set_every)
+    seg.set(next((k for k, v in every.items() if v == app.cfg.get("ram_every", 0)), t("Off")))
+    seg.pack(side="right")
+    app.tip(r, t("Runs Free up RAM on a timer while this app is open. Games and apps in the boost list are not "
+                 "trimmed. Each run is listed in the Auto optimize log."))
 
     # ---- running apps ----
     kind = (t("{n} logical processors: {p} on performance cores, {e} on efficiency cores", n=topo["cpus"],

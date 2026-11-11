@@ -15,7 +15,7 @@ SPAN = {"s": 1, "m": 2, "l": 4}
 
 UNIT = 110          # one grid row in px; widgets snap to 4 columns x UNIT rows
 DEFAULT_H = {"clock": 3, "network": 2, "ssd": 3, "space": 2, "battery": 3, "games": 4, "fps": 4, "memory": 3,
-             "gpu": 2, "wallpaper": 2, "display": 3, "audio": 4, "input": 4, "ram_oc": 3, "cpu_oc": 3}
+             "gpu": 2, "wallpaper": 2, "display": 3, "audio": 4, "input": 4, "ram_oc": 3, "cpu_oc": 3, "overlay": 3}
 
 def dashboard(app, page):
     from . import dash
@@ -469,4 +469,5 @@ WIDGETS = {  # id: (title, builder, default size)
     "battery": ("Battery", wx.battery_widget, "m"), "games": ("Game install locations", games_widget, "l"),
     "fps": ("FPS test", fps_widget, "l"), "memory": ("Top memory users", memory_widget, "m"),
     "gpu": ("Graphics cards", gpu_widget, "l"),
-    "ram_oc": ("RAM speed", wx.ram_oc_widget, "m"), "cpu_oc": ("CPU clock", wx.cpu_oc_widget, "m")}
+    "ram_oc": ("RAM speed", wx.ram_oc_widget, "m"), "cpu_oc": ("CPU clock", wx.cpu_oc_widget, "m"),
+    "overlay": ("In-game overlay", wx.overlay_widget, "m")}

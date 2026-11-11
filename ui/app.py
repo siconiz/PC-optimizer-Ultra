@@ -14,7 +14,6 @@ def _graphics(app, p):
     from . import gpudrv_ui, pages
     pages.graphics(app, p)
     gpudrv_ui.page(app, p)
-    pages.cooling(app, p)
 
 def _cleanup(app, p):
     from . import pages
@@ -64,7 +63,7 @@ def _lazy(module, fn):
 # (key, icon, builder): a page's module is imported only when the page is opened the first time
 PAGES = [("Dashboard", "home", _lazy("widgets", "dashboard")), ("App management", "apps", _lazy("boost", "page")),
          ("AI optimization", "robot", _ai), ("CPU & Memory", "cpu", _lazy("cpumem", "page")),
-         ("Graphics & Cooling", "monitor", _graphics), ("Overlay", "overlay", _lazy("overlay_ui", "page")),
+         ("Graphics & Games", "game", _graphics), ("Cooling", "speed", _lazy("pages", "cooling")), ("Overlay", "overlay", _lazy("overlay_ui", "page")),
          ("Diagnostics", "diag", _lazy("diag", "page")), ("Cleanup", "broom", _cleanup),
          ("System", "settings", _system), ("About", "info", _lazy("pages", "about"))]
 
@@ -130,6 +129,19 @@ class App(ctk.CTk, Kit):
             self.after(2000, self.start_overlay)
         self._queue = [k for k, _, _ in PAGES if k != self.current]
         self.after(2500, self._prebuild)
+        self._ram_at = time.monotonic()
+        self.after(60000, self._ram_timer)
+
+    def _ram_timer(self):
+        """Scheduled RAM cleanup (CPU & Memory page): every `ram_every` minutes, checked once a minute."""
+        self.after(60000, self._ram_timer)
+        every = self.cfg.get("ram_every") or 0
+        if every and time.monotonic() - self._ram_at >= every * 60:
+            self._ram_at = time.monotonic()
+            from core import procs
+            keep = list(self.game_exes) + [x["exe"] for x in self.cfg.get("boost", [])]
+            self.bg(lambda: procs.free_ram(keep=keep),
+                    lambda mb: self.log_autopilot(t("Scheduled RAM cleanup: freed {mb} MB", mb=mb)), lambda m: None)
 
     def _prebuild(self):
         """Build the other pages one by one while nothing else happens, so opening them later is instant."""

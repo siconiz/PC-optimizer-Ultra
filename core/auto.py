@@ -12,6 +12,8 @@ from .i18n import t
 from .memory import PROTECTED
 from .power import active_scheme, pc, ultimate_scheme
 
+# power modes a listed app or game can ask for, strongest first; "Ultimate" = the Ultimate Performance plan
+RUN_MODES = ["Ultimate", "Best performance", "Balanced", "Best power efficiency"]
 DEFAULT_EXCEPTIONS = ["discord.exe", "obs64.exe", "teams.exe", "ms-teams.exe", "zoom.exe", "spotify.exe"]
 
 def _name(pid):
@@ -72,8 +74,14 @@ class Autopilot(threading.Thread):
         names = {}
         for p in psutil.process_iter(["name"]):
             names.setdefault((p.info["name"] or "").lower(), []).append(p.pid)
-        # 1) game -> maximum performance, afterwards the mode chosen for charger / battery
-        game_on = bool(triggers & names.keys())
+        # 1) game / listed app -> its power mode (the strongest of those running), afterwards the idle mode
+        def wanted(exe):
+            prof = profiles.get(exe)
+            m = (prof or {}).get("power") or (c.get("game_power") if exe in games and not prof else None)
+            return m if m in RUN_MODES else "Ultimate"
+        running = triggers & names.keys()
+        target = min((wanted(e) for e in running), key=RUN_MODES.index, default=None)
+        game_on = target is not None
         bat = psutil.sensors_battery()
         plugged = bat is None or bool(bat.power_plugged)
         idle = self.idle_mode(plugged)
@@ -81,11 +89,7 @@ class Autopilot(threading.Thread):
         if game_on and saved_plan is None:
             saved_plan = st["plan"] = active_scheme()
             st["mode"] = cooling.power_mode()
-            if plugged or max_on_battery:
-                pc("/setactive", ultimate_scheme())
-                cooling.set_power_mode("Best performance")
-                self.log(t("Game started: maximum performance"))
-            else:
+            if not (plugged or max_on_battery):
                 self.log(t("Game started on battery: keeping {mode}", mode=t(idle)))
             if self.on_game_started:
                 self.on_game_started()
@@ -95,7 +99,12 @@ class Autopilot(threading.Thread):
             if st["services"]:
                 self.log(t("Paused during the game: {s}", s=", ".join(st["services"])))
             self.check_power()
-        elif not game_on and saved_plan:
+        if game_on and target != st.get("target") and (plugged or max_on_battery):
+            pc("/setactive", ultimate_scheme() if target == "Ultimate" else saved_plan)
+            cooling.set_power_mode("Best performance" if target == "Ultimate" else target)
+            self.log(t("Power mode for {apps}: {mode}", apps=", ".join(sorted(running)), mode=t(target)))
+        st["target"] = target
+        if not game_on and saved_plan:
             pc("/setactive", saved_plan)
             saved_plan = st["plan"] = None
             back = st.pop("mode", None) if only_listed else idle  # only listed apps: put back what was there

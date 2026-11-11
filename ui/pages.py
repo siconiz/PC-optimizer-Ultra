@@ -9,7 +9,7 @@ from core.diag import Sampler
 from core import lang_ko
 from core.i18n import t
 from core.version import REPO, __version__
-from .theme import ACCENT, CARD2, MUTED, WARN
+from .theme import ACCENT, CARD2, MUTED, WARN, F
 
 
 def _tweak_switch(app, body, name, desc):
@@ -35,7 +35,7 @@ def graphics(app, p):
             tree.insert("", "end", values=(g["name"], g["vendor"], f"{g['util']:.0f}%" if g["util"] is not None else "-",
                                            f"{g['vram_used_gb'] if g['vram_used_gb'] is not None else '-'} / {g['vram_gb']} GB",
                                            f"{g['temp']:.0f}°C" if g["temp"] else "-", f"{g['fan']} RPM" if g["fan"] else "-"))
-    app.every(2000, tick, tree, "Graphics & Cooling")
+    app.every(2000, tick, tree, "Graphics & Games")
 
     body = app.card(p, t("Windows graphics settings"))
     _tweak_switch(app, body, "HW-accelerated GPU scheduling", t("Lets the GPU manage its own memory scheduling. "
@@ -47,22 +47,72 @@ def graphics(app, p):
                    "themselves. Needs a G-Sync or FreeSync display."), gpu.global_flag(gpu.VRR),
                    lambda on: gpu.set_global_flag(gpu.VRR, on))
 
-    body = app.card(p, t("Per-app graphics card"), t("Run a game on the discrete GPU on laptops with two GPUs."))
-    r = app.row(body)
-    mode = app.seg(r, [t("Let Windows decide"), t("Power saving"), t("High performance")])
-    mode.set(t("High performance"))
-    mode.pack(side="left")
-    log = app.console(body, 110)
-    levels = {t("Let Windows decide"): 0, t("Power saving"): 1, t("High performance"): 2}
-    def pick():
+    gpu_apps(app, p)
+
+def gpu_apps(app, p):
+    """Per-app graphics card: the installed apps as a list (like App management); pick one or more and a GPU."""
+    body = app.card(p, t("Per-app graphics card"), t("Run games on the discrete GPU on laptops with two GPUs. Select "
+                    "apps (Ctrl or Shift for several) and press a button below. Restart an app that is running."))
+    top = app.row(body)
+    filt = app.seg(top, [t("Games"), t("All")])
+    filt.set(t("Games"))
+    filt.pack(side="left")
+    q = ctk.CTkEntry(top, placeholder_text=t("Filter by name"), width=200, height=32, corner_radius=8)
+    q.pack(side="left", padx=8)
+    tree = app.table(body, [("gpu", t("Graphics card")), ("path", t("Path"))], (150, 430), 10)
+    tree.configure(show="tree headings", selectmode="extended")
+    tree.heading("#0", text=t("Name"), anchor="w")
+    tree.column("#0", width=280, anchor="w")
+    icons = app.__dict__.setdefault("_icons", {})
+    rows = {}
+    def level_of(v):
+        return next((n for n, lv in gpu.PREFS.items() if f"GpuPreference={lv};" in (v or "")), "Let Windows decide")
+    def fill(*_):
+        tree.delete(*tree.get_children())
+        rows.clear()
+        try:
+            prefs = {k.lower(): (k, v) for k, v in gpu.list_app_prefs().items()}
+        except Exception:
+            prefs = {}
+        marks, games, text = app.cfg.get("game_marks", {}), filt.get() == t("Games"), q.get().lower().strip()
+        seen = set()
+        for i, a in enumerate(app.app_index):
+            exe = a.get("exe") or ""
+            if not exe or exe.lower() in seen:
+                continue
+            seen.add(exe.lower())
+            g = marks.get(exe.lower(), a.get("game"))
+            lv = level_of(prefs.get(exe.lower(), ("", ""))[1])
+            if (games and not g and lv == "Let Windows decide") or (text and text not in a["name"].lower()):
+                continue
+            rows[str(i)] = exe
+            tree.insert("", "end", iid=str(i), text="  " + a["name"], image=icons.get(i, ""), values=(
+                t(lv) if lv != "Let Windows decide" else "-", exe))
+        for low, (path, v) in prefs.items():  # set earlier for a program that is not in the app list
+            if low not in seen and (not text or text in low):
+                rows["x" + str(len(rows))] = path
+                tree.insert("", "end", iid="x" + str(len(rows) - 1), text="  " + os.path.basename(path),
+                            values=(t(level_of(v)), path))
+    def apply(level):
+        for iid in tree.selection():
+            gpu.set_app_pref(rows[iid], gpu.PREFS[level])
+        fill()
+    def add():
         if path := filedialog.askopenfilename(filetypes=[("exe", "*.exe")]):
-            path = path.replace("/", "\\")
-            gpu.set_app_pref(path, levels[mode.get()])
-            app.write(log, f"{mode.get()}: {path}")
-    def show():
-        app.write(log, "\n".join(f"{v}  {k}" for k, v in gpu.list_app_prefs().items()) or t("(none)"), clear=True)
-    app.button(r, t("Choose game .exe"), pick).pack(side="left", padx=8)
-    app.button(r, t("Show list"), show, primary=False).pack(side="left")
+            gpu.set_app_pref(path.replace("/", "\\"), gpu.PREFS["High performance"])
+            fill()
+    r = app.row(body, (8, 0))
+    for level in ("High performance", "Power saving", "Let Windows decide"):
+        app.button(r, t(level), lambda lv=level: apply(lv), primary=level == "High performance").pack(side="left",
+                                                                                                    padx=(0, 6))
+    app.button(r, t("Other .exe..."), add, primary=False).pack(side="right")
+    filt.configure(command=fill)
+    q.bind("<KeyRelease>", fill)
+    if app.app_index:
+        fill()
+    else:
+        from core import appsdb
+        app.bg(appsdb.scan, lambda apps: (setattr(app, "app_index", apps), fill()), lambda m: None)
 
 # ---------- Cooling ----------
 def cooling(app, p):
@@ -134,15 +184,32 @@ def storage(app, p):
         app.bg(work, show)
     refresh()
 
-    body = app.card(p, t("Find unneeded files"), t("Pick a drive. On the Windows drive it scans temp folders, old installers in Downloads, "
-                    "large files you have not touched in months, photos, videos and music, leftover folders of "
-                    "uninstalled apps and game saves. Only temp files and installers are ticked for you; the "
-                    "rest is ticked by you. Nothing is deleted automatically; selected items go to the Recycle Bin."))
+    body = app.card(p, t("Find unneeded files"), t("Tick what to look for and pick a drive (other drives: large old "
+                    "files only). Folders and files named after an app on this PC are never listed. Nothing is "
+                    "deleted automatically; ticked items go to the Recycle Bin after you confirm twice."))
+    kinds = app.cfg.setdefault("clean_kinds", list(cleaner.DEFAULT_KINDS))
+    labels = {"temp": "Temp files", "installer": "Old installers", "download": "Downloads", "video": "Videos",
+              "photo": "Photos", "music": "Music", "personal": "My files", "large": "Large old files",
+              "leftover": "Uninstalled app folders", "save": "Game saves"}
+    boxes = ctk.CTkFrame(body, fg_color="transparent")
+    boxes.pack(fill="x", pady=(0, 6))
+    def toggle(k, var):
+        if var.get() and k not in kinds:
+            kinds.append(k)
+        elif not var.get() and k in kinds:
+            kinds.remove(k)
+        app.save()
+    for i, k in enumerate(cleaner.KINDS):
+        var = ctk.BooleanVar(value=k in kinds)
+        ctk.CTkCheckBox(boxes, text=t(labels[k]), variable=var, command=lambda k=k, v=var: toggle(k, v), width=150,
+                        checkbox_width=18, checkbox_height=18, font=F(12), fg_color=ACCENT,
+                        hover_color=ACCENT).grid(row=i // 5, column=i % 5, sticky="w", padx=(0, 8), pady=2)
     r = app.row(body)
     lbl = app.label(r, "", 12, muted=True)
     tree = app.table(body, [("sel", ""), ("size", t("Size (MB)")), ("age", t("Age (days)")), ("reason", t("Reason")),
                             ("path", t("Path"))], (34, 90, 90, 300, 390), 12,
-                     {"temp": ACCENT, "installer": ACCENT, "large": WARN, "media": MUTED, "leftover": WARN, "save": WARN})
+                     {"temp": ACCENT, "installer": ACCENT, "large": WARN, "video": MUTED, "photo": MUTED,
+                      "music": MUTED, "download": MUTED, "personal": WARN, "leftover": WARN, "save": WARN, "ai": ACCENT})
     tree.configure(selectmode="none")  # a click ticks a row; several rows can be ticked and removed together
     state = {"c": [], "on": set()}
     def mark(iid):
@@ -178,12 +245,21 @@ def storage(app, p):
     pick.set(drives[0])
     def scan():
         lbl.configure(text=t("Scanning..."))
-        app.bg(lambda: cleaner.scan(pick.get()), fill)
+        app.bg(lambda: cleaner.scan(pick.get(), list(kinds)), fill)
     def trash():
         sel = [x["path"] for x in state["c"] if x["path"] in state["on"]]
         whole = {x["path"] for x in state["c"] if x["kind"] in cleaner.WHOLE_FOLDER}
-        risky = any(x["kind"] in ("save", "leftover") for x in state["c"] if x["path"] in state["on"])
-        if sel and app.ask(t("Recycle Bin"), t("Move {n} item(s) to the Recycle Bin?", n=len(sel)), warn=risky):
+        picked = [x for x in state["c"] if x["path"] in state["on"]]
+        risky = any(x["kind"] in ("save", "leftover", "personal", "photo", "video", "music") for x in picked)
+        per = {}
+        for x in picked:
+            per[t(labels.get(x["kind"], x["kind"]))] = per.get(t(labels.get(x["kind"], x["kind"])), 0) + 1
+        detail = "\n".join(f"  {k}: {v}" for k, v in per.items())
+        mb = round(sum(x["size_mb"] for x in picked))
+        if sel and app.ask(t("Recycle Bin"), t("Move {n} item(s) to the Recycle Bin?", n=len(sel)), warn=risky) and \
+                app.ask(t("Check once more"), t("These {n} items ({mb} MB) go to the Recycle Bin:\n{d}\n\nYou can "
+                        "restore them from the Recycle Bin until it is emptied. Continue?", n=len(sel), mb=mb,
+                        d=detail), warn=True):
             lbl.configure(text=t("Moving to the Recycle Bin..."))
             app.bg(lambda: cleaner.trash(sel, whole), lambda n: (lbl.configure(text=t("Moved {n} file(s)", n=n)), scan()))
     pick.pack(side="left")
@@ -197,6 +273,50 @@ def storage(app, p):
     app.button(r2, t("Select none"), lambda: select("none"), primary=False, width=90).pack(side="left")
     app.button(r2, t("Move selected to Recycle Bin"), trash).pack(side="right")
     app.tip(tree, t("Click rows to tick them, then move all ticked files to the Recycle Bin at once."))
+    _ai_clean(app, body, state, fill_marks=lambda: ([mark(i) for i in tree.get_children()], summary()), tree=tree)
+
+def _ai_clean(app, body, state, fill_marks, tree):
+    """AI picks from the scanned list. Only names, kinds, sizes and ages are sent - never contents or folders."""
+    from core import aiclean, i18n
+    r = app.row(body, (10, 0))
+    provs = {t("Ollama (on this PC)"): "ollama", t("Claude API (your key)"): "claude"}
+    prov = app.seg(r, list(provs), lambda v: (app.cfg.__setitem__("ai_clean", provs[v]), app.save()))
+    prov.set(next((k for k, v in provs.items() if v == app.cfg.get("ai_clean", "ollama")), t("Ollama (on this PC)")))
+    prov.pack(side="left")
+    out = app.label(body, "", 12, muted=True, wrap=880)
+    def set_key():
+        d = ctk.CTkInputDialog(title=t("Claude API key"), text=t("Paste your Anthropic API key. It is saved "
+                               "encrypted for this Windows user. Leave empty to remove it."))
+        k = d.get_input()
+        if k is not None:
+            aiclean.save_key(app.cfg, k)
+            app.save()
+    def done(picks):
+        for path, why in picks:
+            state["on"].add(path)
+            if tree.exists(path):
+                tree.item(path, tags=("ai",))
+                tree.set(path, "reason", "AI: " + why)
+        fill_marks()
+        out.configure(text=t("AI picked {n} items (ticked and shown in green). Check them before moving.",
+                             n=len(picks)), text_color=ACCENT)
+    def run():
+        if not state["c"]:
+            return out.configure(text=t("Scan first."), text_color=WARN)
+        p = provs[prov.get()]
+        if p == "claude":
+            if not app.cfg.get("ai_key"):
+                return set_key()
+            n = len(aiclean.facts(state["c"])[1])
+            if not app.ask(t("AI suggestions"), t("Send the names, sizes and ages of {n} files to Anthropic (Claude "
+                           "API)? File contents and folder paths are not sent.", n=n)):
+                return
+        out.configure(text=t("Asking the AI..."), text_color=MUTED)
+        app.bg(lambda: aiclean.suggest(app.cfg, state["c"], p, i18n.LANG[0]), done,
+               lambda m: out.configure(text=t("AI suggestions failed: {e}", e=m), text_color=WARN))
+    app.button(r, t("AI suggestions"), run).pack(side="left", padx=8)
+    app.button(r, t("API key..."), set_key, primary=False, width=100).pack(side="left")
+    out.pack(anchor="w", pady=(6, 0))
 
 # ---------- Browsers ----------
 BROWSER_TWEAKS = {

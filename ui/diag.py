@@ -176,7 +176,7 @@ def _scan(app, body, ds):
     out.pack(anchor="w", pady=(6, 0))
 
 def _temps(app, p):
-    body = app.card(p, t("Temperatures"), t("CPU temperature needs the PawnIO driver (Graphics & Cooling > Temperatures and fans). "
+    body = app.card(p, t("Temperatures"), t("CPU temperature needs the PawnIO driver (Cooling > Temperatures and fans). "
                     "Without it the app shows the firmware's thermal zone, which is often not the CPU itself."))
     lbl = app.label(body, t("Checking..."), 13, wrap=820)
     lbl.pack(anchor="w")

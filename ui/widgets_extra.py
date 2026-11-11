@@ -233,3 +233,30 @@ def cpu_oc_widget(app, body):
         sub.configure(text=hint)
     _check(app, body, "cpu")
     app.every(2000, tick, name, "Dashboard")
+
+# ---------- overlay ----------
+def overlay_widget(app, body):
+    """In-game overlay on the dashboard: switch it on or off, live FPS and the same graph the overlay draws."""
+    from .overlay import cfg_of, draw_graph
+    ov = app.overlay
+    sw = app.switch_row(body, t("In-game overlay"), t("Shortcut: {k}", k=cfg_of(app)["hotkey"]), bool(ov.running),
+                        lambda on: ov.toggle() if on != bool(ov.running) else None)
+    fps = app.label(body, "--", 26, bold=True)
+    fps.pack(anchor="w", pady=(4, 0))
+    sub = app.label(body, "", 12, muted=True)
+    sub.pack(anchor="w")
+    pic = ctk.CTkLabel(body, text="")
+    pic.pack(anchor="w", pady=(6, 0))
+    def tick():
+        if bool(sw.get()) != bool(ov.running):  # turned on or off with the shortcut
+            sw.select() if ov.running else sw.deselect()
+        st = ov.last_stats if ov.running else None
+        fps.configure(text=f"{st['fps']} FPS" if st else "--")
+        sub.configure(text=t("Avg {a}  ·  1% low {l}", a=st["avg"], l=st["low1"]) if st else
+                      t("Start a game to see FPS.") if ov.running else t("The overlay is off."))
+        w = max(200, body.winfo_width() - 8)
+        im = draw_graph(list(ov.fps_hist), w, 70) if ov.running and len(ov.fps_hist) > 1 else None
+        pic.configure(image=ctk.CTkImage(im, size=(w, 70)) if im else None)
+        pic._img = im
+    app.every(1000, tick, fps, "Dashboard")
+    app.button(body, t("Overlay settings"), lambda: app.show("Overlay"), primary=False).pack(anchor="w", pady=(8, 0))

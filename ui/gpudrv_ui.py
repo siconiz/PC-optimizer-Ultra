@@ -1,4 +1,4 @@
-"""Graphics & Cooling: the graphics driver's own 3D settings (NVIDIA / AMD / Intel), applied to all games."""
+"""Graphics & Games page: the graphics driver's own 3D settings (NVIDIA / AMD / Intel), applied to all games."""
 import customtkinter as ctk
 from core import gpudrv, gpuinfo
 from core.i18n import t

@@ -4,7 +4,7 @@ import os, subprocess, tkinter as tk
 from datetime import datetime
 import customtkinter as ctk
 from core import appmove, appsdb, boost, gpu, procs
-from core.auto import DEFAULT_EXCEPTIONS
+from core.auto import DEFAULT_EXCEPTIONS, RUN_MODES
 from core.i18n import t
 from .cores import ask_cores
 from .theme import ACCENT, BG, CARD2, HOVER2, MUTED, ON_ACCENT, TEXT, WARN, F
@@ -50,7 +50,7 @@ def page(app, p):
         a = chosen()
         if not a or not a["exe"]:
             return app.info(t("Graphics"), t("The program file of this app is unknown, so its graphics card cannot "
-                                             "be chosen. Use Graphics & Cooling > Per-app graphics card instead."))
+                                             "be chosen. Use Graphics & Games > Per-app graphics card instead."))
         try:
             gpu.set_app_pref(a["exe"], gpu.PREFS[level])
         except OSError as e:
@@ -227,15 +227,16 @@ def page(app, p):
     # ---- boost list ----
     body = app.card(p, t("Boost list"), t("Apps that get their own priority and CPU cores every time they start. "
                                           "Games in this list also turn on maximum performance."))
-    ptree = app.table(body, [("name", t("Name")), ("pri", t("Priority")), ("cores", t("Cores")), ("kind", t("Type"))],
-                      (260, 140, 160, 120), 5)
+    ptree = app.table(body, [("name", t("Name")), ("pri", t("Priority")), ("cores", t("Cores")), ("kind", t("Type")),
+                             ("power", t("Power mode while running"))], (240, 120, 130, 100, 200), 5)
     def cores_text(c):
         return t("Auto") if c == "auto" else t("All") if c == "all" else ",".join(map(str, c))
     def fill_profiles():
         ptree.delete(*ptree.get_children())
         for i, x in enumerate(profiles):
             kind = t("AI app") if x.get("ai") else t("Game") if x.get("game") else t("App")
-            ptree.insert("", "end", iid=str(i), values=(x["name"], t(x["priority"]), cores_text(x["cores"]), kind))
+            power = t(x.get("power") or "Ultimate") if x.get("plan", True) else t("No change")
+            ptree.insert("", "end", iid=str(i), values=(x["name"], t(x["priority"]), cores_text(x["cores"]), kind, power))
     def sel():
         return [profiles[int(i)] for i in ptree.selection()]
     def edit(key, val):
@@ -255,6 +256,18 @@ def page(app, p):
                             command=lambda v: edit("priority", next(k for k in procs.PRIORITIES if t(k) == v)))
     pri.set(t("Priority"))
     pri.pack(side="left")
+    modes = {t(m): m for m in RUN_MODES + ["No change"]}
+    def set_power(v):
+        for x in sel():
+            x["plan"] = modes[v] != "No change"
+            x["power"] = modes[v] if x["plan"] else None
+        app.save()
+        fill_profiles()
+    pm = ctk.CTkOptionMenu(r, values=list(modes), width=170, height=32, fg_color=CARD2, button_color=CARD2,
+                           button_hover_color=HOVER2, command=set_power)
+    pm.set(t("Power mode"))
+    pm.pack(side="left", padx=(6, 0))
+    app.tip(pm, t("Power mode while the selected apps run. With several listed apps open, the strongest one wins."))
     app.button(r, t("Cores..."), lambda: sel() and ask_cores(app, topo, lambda cs: edit("cores", cs)),
                primary=False, width=100).pack(side="left", padx=6)
     app.button(r, t("Remove"), remove, primary=False, width=90).pack(side="left")
@@ -276,6 +289,12 @@ def _autopilot_card(app, p):
     app.switch_row(body, t("Auto optimize"), "", c.get("autopilot", True), toggle)
     adv = app.details(body)
     power_rows(app, adv)
+    r = app.row(adv, 4)
+    app.label(r, t("Games not in the boost list"), 13).pack(side="left")
+    gnames = [t(m) for m in RUN_MODES]
+    gseg = app.seg(r, gnames, lambda v: (c.__setitem__("game_power", RUN_MODES[gnames.index(v)]), app.save()))
+    gseg.set(t(c.get("game_power", "Ultimate")))
+    gseg.pack(side="right")
     app.switch_row(adv, t("Slow down apps in the background"), t("Efficiency mode for apps that are not in front."),
                    c.get("throttle", True), lambda on: (c.__setitem__("throttle", on), app.save()))
     app.switch_row(adv, t("Also move them to efficiency cores"), t("Intel hybrid CPUs only."),

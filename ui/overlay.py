@@ -162,10 +162,47 @@ def _font(px, bold):
             _FONTS[key] = ImageFont.load_default(px)
     return _FONTS[key]
 
+def draw_graph(vals, w, h, kind="fps", scale=3):
+    """Smooth graph picture (RGBA, w x h): drawn 3x larger and scaled down for clean edges, soft fill under the
+    line, guide lines with their values. kind 'fps' (higher is better) or 'ms' (frame time, spikes are bad)."""
+    from PIL import Image, ImageDraw
+    W, H, S = w * scale, h * scale, scale
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    if len(vals) < 2:
+        return img.resize((w, h), Image.LANCZOS)
+    if kind == "fps" and len(vals) > 4:  # 3-point average: the trend without the sampling noise
+        vals = [sum(vals[max(0, i - 1):i + 2]) / len(vals[max(0, i - 1):i + 2]) for i in range(len(vals))]
+    top = max(vals)
+    step = next((s for s in (5, 10, 20, 30, 50, 100) if top * 1.15 / s <= 4), 200)
+    hi = max(step, step * -(-top * 1.15 // step))  # round up to a guide step
+    avg = sum(vals) / len(vals)
+    good = avg >= 60 if kind == "fps" else max(vals) <= 25
+    ok = avg >= 30 if kind == "fps" else max(vals) <= 50
+    col = (73, 220, 120) if good else (255, 200, 70) if ok else (255, 90, 80)
+    d = ImageDraw.Draw(img)
+    f = _font(max(8, h // 4) * S, False)
+    for gv in (hi / 2, hi):  # guide lines
+        gy = H - (H - 2 * S) * gv / hi
+        d.line([(0, gy), (W, gy)], fill=(255, 255, 255, 40), width=S)
+        d.text((W - 2 * S, gy + S), f"{gv:.0f}", font=f, fill=(255, 255, 255, 110), anchor="ra")
+    pts = [(i * (W - 1) / (len(vals) - 1), H - S - (H - 3 * S) * min(v, hi) / hi) for i, v in enumerate(vals)]
+    fill = Image.new("RGBA", (W, H), col + (0,))
+    mask = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(mask).polygon(pts + [(W - 1, H), (0, H)], fill=255)
+    grad = Image.linear_gradient("L").resize((W, H)).point(lambda v: (255 - v) * 90 // 255)  # 35% at top -> 0
+    fill.putalpha(Image.composite(grad, Image.new("L", (W, H), 0), mask))
+    img.alpha_composite(fill)
+    d.line(pts, fill=col + (255,), width=2 * S, joint="curve")
+    if kind == "ms":  # mark stutters: frames over twice the average frame time
+        for (x, y), v in zip(pts, vals):
+            if v > 2 * avg and v > 16:
+                d.ellipse((x - 2 * S, y - 2 * S, x + 2 * S, y + 2 * S), fill=(255, 90, 80, 255))
+    return img.resize((w, h), Image.LANCZOS)
+
 def render(rows, base, box, edit):
     """rows: [[('t', text, color, size_step) | ('g', values, color)]] -> RGBA picture of one overlay box."""
     from PIL import Image, ImageDraw
-    pad, gap, gw, gh = round(base * 0.6), round(base * 0.45), round(base * 15), round(base * 2)
+    pad, gap, gw, gh = round(base * 0.6), round(base * 0.45), round(base * 15), round(base * 3.2)
     lines = []
     for row in rows:
         w = h = 0
@@ -196,11 +233,7 @@ def render(rows, base, box, edit):
                        stroke_width=stroke, stroke_fill=(0, 0, 0, 220))
                 x += _font(size, True).getlength(it[1]) + gap
             else:
-                vals = it[1]
-                top = max(vals) or 1
-                pts = [(x + i * gw / max(1, len(vals) - 1), y + gh - (gh - 2) * v / top) for i, v in enumerate(vals)]
-                if len(pts) > 1:
-                    d.line(pts, fill=it[2], width=max(1, base // 10))
+                img.alpha_composite(draw_graph(it[1], gw, gh, it[3] if len(it) > 3 else "fps"), (int(x), int(y + 1)))
         y += h
     return img
 
@@ -291,6 +324,7 @@ class Overlay:
         self.ping = {"ms": None, "host": ""}
         self.mic_muted, self.track_pid, self.track_since = None, None, time.time()
         self.usage, self.n = None, 0
+        self.fps_hist, self.last_stats = __import__("collections").deque(maxlen=60), None
         self._ping_job = threading.Event()
 
     @property
@@ -451,6 +485,9 @@ class Overlay:
     def _render(self):
         c = cfg_of(self.app)
         st = self.fps.stats() if self.fps else None
+        if st:
+            self.fps_hist.append(st["fps"])
+        self.last_stats = st
         hw = getattr(self.app, "hw", None)
         try:
             snap = self.app.cached(("gpu", id(self.usage)), lambda: gpuinfo.snapshot(self.usage), []) if self.usage else []
@@ -461,7 +498,7 @@ class Overlay:
         for k in [k for k in c["order"] if c["modules"].get(k)]:
             rows = []
             line = lambda *parts: rows.append([("t", text, color, kk) for text, color, kk in parts if text])
-            graph = lambda vals, color: rows.append([("g", vals, color)])
+            graph = lambda vals, color, kind="fps": rows.append([("g", vals, color, kind)])
             try:
                 self._module(k, line, graph, st, hw, g, c)
             except Exception:
@@ -506,12 +543,11 @@ class Overlay:
         elif k == "avglow" and st:
             line((t("Avg"), GREY, -1), (str(st["avg"]), WHITE, 1), ("1% low", GREY, -1), (str(st["low1"]), ORANGE, 1))
         elif k in ("fpsgraph", "frametime") and st:
-            vals = st["frametimes"][-80:]
-            if k == "fpsgraph":
-                vals = [1000 / v for v in vals]
+            # FPS: one value per update (twice a second, last 30 s); frame time: every frame, so stutters show
+            vals = list(self.fps_hist) if k == "fpsgraph" else st["frametimes"][-120:]
             label = ("FPS", f"{st['fps']} fps") if k == "fpsgraph" else (t("FRAME TIME"), f"{st['ms']} ms")
             line((label[0], WHITE if k == "fpsgraph" else "#ffd75e", -2), (label[1], WHITE, -2))
-            graph(vals, WHITE)
+            graph(vals, WHITE, "fps" if k == "fpsgraph" else "ms")
         elif k == "cpu":
             temp = hw.cpu_temp() if hw else None
             mhz = hw.cpu_clock() if hw else None

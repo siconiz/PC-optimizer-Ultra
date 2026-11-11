@@ -1,4 +1,4 @@
-"""Graphics & Cooling: temperatures, fan speeds and fan control (LibreHardwareMonitorLib + PawnIO)."""
+"""Cooling page: temperatures, fan speeds and fan control (LibreHardwareMonitorLib + PawnIO)."""
 import webbrowser
 import customtkinter as ctk
 from core import sensors
@@ -56,7 +56,7 @@ def section(app, p):
                     hot = kind == "Temperature" and s["value"] >= 90
                     tree.insert("", "end", tags=("hot",) if hot else (), values=(s["hw"], s["name"], f"{s['value']:g}{unit}"))
         msg.configure(text="" if hw.snapshot else t("Starting..."))
-    app.every(2000, tick, temps, "Graphics & Cooling")
+    app.every(2000, tick, temps, "Cooling")
     _control(app, p)
 
 def _control(app, p):
@@ -87,7 +87,7 @@ def _control(app, p):
                                                             describe(rules.get(s["id"], {"mode": "auto"}))))
         if sel and tree.exists(sel[0]):
             tree.selection_set(sel[0])
-    app.every(2500, fill, tree, "Graphics & Cooling")
+    app.every(2500, fill, tree, "Cooling")
     # editor
     r1 = app.row(form, (10, 4))
     seg = app.seg(r1, list(modes.values()))
