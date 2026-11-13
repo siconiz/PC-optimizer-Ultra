@@ -70,7 +70,6 @@ class Autopilot(threading.Thread):
         games = set(self.game_exes) | {p["exe"] for p in profiles.values() if p.get("game")}
         # apps that switch the power mode: games and every app in the boost list (unless its plan option is off)
         triggers = games | {p["exe"] for p in profiles.values() if p.get("plan", True)}
-        only_listed = c.get("power_only_listed", True)
         names = {}
         for p in psutil.process_iter(["name"]):
             names.setdefault((p.info["name"] or "").lower(), []).append(p.pid)
@@ -85,6 +84,7 @@ class Autopilot(threading.Thread):
         bat = psutil.sensors_battery()
         plugged = bat is None or bool(bat.power_plugged)
         idle = self.idle_mode(plugged)
+        only_listed = idle == "No change"  # leave the power mode alone outside games
         max_on_battery = c.get("battery_game_max", True)
         if game_on and saved_plan is None:
             saved_plan = st["plan"] = active_scheme()
@@ -107,7 +107,7 @@ class Autopilot(threading.Thread):
         if not game_on and saved_plan:
             pc("/setactive", saved_plan)
             saved_plan = st["plan"] = None
-            back = st.pop("mode", None) if only_listed else idle  # only listed apps: put back what was there
+            back = st.pop("mode", None) if only_listed else idle  # "No change": put back what was there
             if back:
                 cooling.set_power_mode(back)
             idle = back or idle
@@ -162,9 +162,11 @@ class Autopilot(threading.Thread):
         st["plan"], st["boosted"] = saved_plan, boosted
 
     def idle_mode(self, plugged):
-        """Power mode outside games: separate choices for charger and battery (fall back to the old single one)."""
+        """Power mode outside games, chosen separately for charger and battery. "No change": leave the mode alone
+        (after a game the mode from before it comes back). Old settings: the 'only while a listed app runs' switch."""
         c = self.cfg
-        return c.get("power_ac" if plugged else "power_dc") or c.get("idle_mode", "Balanced")
+        return c.get("power_ac" if plugged else "power_dc") or (
+            "No change" if c.get("power_only_listed", True) else c.get("idle_mode", "Balanced"))
 
     def check_power(self):
         """Warn when the battery or the charger limits performance during a game."""

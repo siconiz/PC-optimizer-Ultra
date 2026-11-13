@@ -287,14 +287,14 @@ def _autopilot_card(app, p):
         app.save()
         app.set_autopilot(on)
     app.switch_row(body, t("Auto optimize"), "", c.get("autopilot", True), toggle)
-    adv = app.details(body)
-    power_rows(app, adv)
-    r = app.row(adv, 4)
+    power_rows(app, body)  # shown, not under advanced settings: the power mode is the main choice here
+    r = app.row(body, 4)
     app.label(r, t("Games not in the boost list"), 13).pack(side="left")
     gnames = [t(m) for m in RUN_MODES]
     gseg = app.seg(r, gnames, lambda v: (c.__setitem__("game_power", RUN_MODES[gnames.index(v)]), app.save()))
     gseg.set(t(c.get("game_power", "Ultimate")))
     gseg.pack(side="right")
+    adv = app.details(body)
     app.switch_row(adv, t("Slow down apps in the background"), t("Efficiency mode for apps that are not in front."),
                    c.get("throttle", True), lambda on: (c.__setitem__("throttle", on), app.save()))
     app.switch_row(adv, t("Also move them to efficiency cores"), t("Intel hybrid CPUs only."),
@@ -365,36 +365,30 @@ def power_rows(app, parent, on_change=None):
     """Power mode outside games, separately for charger and battery (battery only on laptops)."""
     import psutil
     c = app.cfg
-    box = ctk.CTkFrame(parent, fg_color="transparent", height=1)
-    def only(on):
-        c["power_only_listed"] = on
-        app.save()
-        box.pack_forget() if on else box.pack(fill="x", after=sw.master)
-        if on_change:
-            on_change()
-    sw = app.switch_row(parent, t("Change the power mode only while a listed app runs"), t(
-        "On: maximum performance only while a game or an app in the boost list runs; afterwards the power mode you "
-        "had before comes back, and nothing changes the rest of the time. Off: also switch modes when the charger is "
-        "connected or removed."), c.get("power_only_listed", True), only)
-    if not c.get("power_only_listed", True):
-        box.pack(fill="x")
-    rows = [("power_ac", t("When plugged in (no game running)"))]
-    if psutil.sensors_battery():
-        rows.append(("power_dc", t("On battery (no game running)")))
+    from core import cooling
+    bat = psutil.sensors_battery()
+    rows = [("power_ac", t("Normal use, plugged in") if bat else t("Normal use (no listed app running)"))]
+    if bat:
+        rows.append(("power_dc", t("Normal use, on battery")))
+    choices = ["No change"] + POWER_MODES
+    names = [t(m) for m in choices]
     for key, label in rows:
-        r = app.row(box, 4)
+        r = app.row(parent, 4)
         app.label(r, label, 13).pack(side="left")
-        names = [t(m) for m in POWER_MODES]
         def pick(v, key=key):
-            c[key] = POWER_MODES[names.index(v)]
+            mode = c[key] = choices[names.index(v)]
             app.save()
+            now = psutil.sensors_battery()
+            if mode != "No change" and (key == "power_ac") == (now is None or now.power_plugged):
+                app.bg(lambda: cooling.set_power_mode(mode), None, lambda m: None)  # use it right away
             if on_change:
                 on_change()
         seg = app.seg(r, names, pick)
-        seg.set(t(c.get(key) or c.get("idle_mode", "Balanced")))
+        seg.set(t(c.get(key) or ("No change" if c.get("power_only_listed", True) else c.get("idle_mode", "Balanced"))))
         seg.pack(side="right")
-        app.tip(r, t("Switches the Windows power mode automatically when the charger is connected or removed. "
-                     "While a game runs, Auto optimize uses maximum performance."))
+        app.tip(r, t("Power mode while no game or boost list app runs. No change: this app leaves the mode alone. "
+                     "With a mode chosen, it is set now and again after each game"
+                     + (" and when the charger is connected or removed." if bat else ".")))
     if psutil.sensors_battery():
         app.switch_row(parent, t("Maximum performance for games on battery"), t("Off keeps the battery mode while "
                        "gaming on battery: longer battery life, lower FPS. The laptop limits power on battery anyway."),

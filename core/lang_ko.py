@@ -956,6 +956,11 @@ KO = {
     'In Downloads, not opened for a month': '다운로드 폴더, 한 달 넘게 안 바뀜',
     'Your file, not changed for 3 months - check first': '직접 만든 파일, 3개월 넘게 안 바뀜 - 먼저 확인하세요',
     'Click the box to tick a row. Double-click a name to open its folder.': '네모 칸을 눌러 선택하세요. 이름을 더블클릭하면 그 폴더가 열립니다.',
+    'Normal use, plugged in': '평소(충전 중)',
+    'Normal use, on battery': '평소(배터리 사용 중)',
+    'Normal use (no listed app running)': '평소(목록 앱이 꺼져 있을 때)',
+    'Power mode while no game or boost list app runs. No change: this app leaves the mode alone. With a mode chosen, it is set now and again after each game and when the charger is connected or removed.': '게임이나 부스트 목록 앱이 꺼져 있을 때의 전원 모드입니다. 바꾸지 않음: 이 앱이 전원 모드를 건드리지 않습니다. 모드를 고르면 바로 적용되고, 게임이 끝날 때와 충전기를 꽂거나 뺄 때마다 다시 적용됩니다.',
+    'Power mode while no game or boost list app runs. No change: this app leaves the mode alone. With a mode chosen, it is set now and again after each game.': '게임이나 부스트 목록 앱이 꺼져 있을 때의 전원 모드입니다. 바꾸지 않음: 이 앱이 전원 모드를 건드리지 않습니다. 모드를 고르면 바로 적용되고, 게임이 끝날 때마다 다시 적용됩니다.',
 }
 
 NAME = "한국어"  # language selector label
