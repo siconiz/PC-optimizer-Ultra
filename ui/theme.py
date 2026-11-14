@@ -9,6 +9,23 @@ DARK = dict(BG="#0e1116", SIDE="#141922", CARD="#1a202b", CARD2="#222a37", HOVER
 LIGHT = dict(BG="#eef1f5", SIDE="#e4e8ee", CARD="#ffffff", CARD2="#edf0f4", HOVER2="#dfe4eb", TEXT="#141922",
              MUTED="#5b6577", SEL="#cfeedd", SEL_H="#bfe6d1", WARN="#a86a00", ACCENT="#1fa863", ACCENT_H="#1a9156",
              ON_ACCENT="#ffffff", BORDER="#dfe4eb", TABLE="#ffffff", SEG_SEL="#cfeedd")
+# accent colors (dark mode, light mode): the light one is darker so text on white stays readable
+ACCENTS = {"green": ("#3ddc84", "#1fa863"), "blue": ("#4c9dff", "#1f6fe0"), "purple": ("#a57cff", "#7448e0"),
+           "pink": ("#ff6fae", "#d6337f"), "red": ("#ff5f5f", "#d43737"), "orange": ("#ff9a3c", "#d46a0c"),
+           "gold": ("#f2c94c", "#a8820a"), "teal": ("#2fd1c5", "#119c92")}
+# surfaces: BG, SIDE, CARD, CARD2, HOVER2 (dark mode, light mode)
+SURFACES = {"navy": (("#0e1116", "#141922", "#1a202b", "#222a37", "#2c3646"),
+                     ("#eef1f5", "#e4e8ee", "#ffffff", "#edf0f4", "#dfe4eb")),
+            "black": (("#000000", "#0a0a0c", "#121215", "#1b1b20", "#26262d"),
+                      ("#f4f4f5", "#e9e9eb", "#ffffff", "#efeff1", "#e2e2e6")),
+            "graphite": (("#141414", "#1a1a1a", "#212121", "#2a2a2a", "#353535"),
+                         ("#ededed", "#e3e3e3", "#fafafa", "#ececec", "#dedede")),
+            "plum": (("#120e18", "#18121f", "#1f1828", "#282033", "#332942"),
+                     ("#f3eff7", "#e9e3f0", "#ffffff", "#f0ebf5", "#e3dbec")),
+            "forest": (("#0c1210", "#121a17", "#18221e", "#202d28", "#2a3a33"),
+                       ("#eef3f0", "#e3ebe6", "#ffffff", "#edf2ef", "#dde7e1")),
+            "warm": (("#15110e", "#1c1713", "#241e19", "#2e2620", "#3a3028"),
+                     ("#f5f1ea", "#ebe5da", "#fffdf9", "#f2ece2", "#e4dccd"))}
 R_CARD, R = 14, 8  # corner radius of cards / of buttons, inputs and tiles
 BG = SIDE = CARD = CARD2 = HOVER2 = TEXT = MUTED = SEL = SEL_H = WARN = ACCENT = ACCENT_H = ON_ACCENT = BORDER = TABLE = \
     SEG_SEL = ""
@@ -39,11 +56,37 @@ def _shade(color, f):
     r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
     return "#%02x%02x%02x" % tuple(max(0, min(255, int(c * f))) for c in (r, g, b))
 
-def init(mode="system"):
-    """mode: 'system', 'light' or 'dark'. Restart the app to switch."""
+def _mix(a, b, f):
+    """Color between a (f=0) and b (f=1)."""
+    x = [int(a[i:i + 2], 16) for i in (1, 3, 5)]
+    y = [int(b[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#%02x%02x%02x" % tuple(round(p + (q - p) * f) for p, q in zip(x, y))
+
+def _light(color):
+    r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.299 * r + 0.587 * g + 0.114 * b > 150
+
+def palette(dark, accent="green", surface="navy"):
+    """Colors for one mode. accent: a name from ACCENTS or '#rrggbb'; surface: a name from SURFACES."""
+    pal = dict(DARK if dark else LIGHT)
+    if surface in SURFACES and surface != "navy":
+        pal.update(zip(("BG", "SIDE", "CARD", "CARD2", "HOVER2"), SURFACES[surface][0 if dark else 1]))
+        pal["BORDER"] = pal["CARD2"] if dark else pal["HOVER2"]
+        pal["TABLE"] = pal["SIDE"] if dark else pal["CARD"]
+    if accent != "green" or surface != "navy":
+        a = ACCENTS[accent][0 if dark else 1] if accent in ACCENTS else accent
+        if not dark and accent not in ACCENTS and _light(a):
+            a = _mix(a, "#000000", 0.3)  # a custom light color: darker in light mode so it stays readable
+        sel = _mix(pal["BG"], a, 0.32 if dark else 0.22)
+        pal.update(ACCENT=a, ACCENT_H=_shade(a, 0.85), SEL=sel, SEG_SEL=sel, SEL_H=_mix(sel, a, 0.15),
+                   ON_ACCENT="#0b0f14" if _light(a) else "#ffffff")
+    return pal
+
+def init(mode="system", accent="green", surface="navy"):
+    """mode: 'system', 'light' or 'dark'; accent and surface: see palette(). Restart the app to switch."""
     dark = _system_dark() if mode == "system" else mode == "dark"
     MODE[0] = "dark" if dark else "light"
-    pal = dict(DARK if dark else LIGHT)
+    pal = palette(dark, accent, surface)
     globals().update(pal)
     ctk.set_appearance_mode(MODE[0])
     tm = ctk.ThemeManager.theme  # green accent also for widgets that do not set their colors themselves

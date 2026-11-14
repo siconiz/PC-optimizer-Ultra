@@ -107,6 +107,7 @@ class Popup:
         w = self.w = ctk.CTkToplevel(app, fg_color=BG)
         w.title(title)
         w.attributes("-topmost", True)
+        w.attributes("-alpha", app.cfg.get("assistant", {}).get("popup_alpha", 0.97))
         w.resizable(False, False)
         Popup.open_count += 1
         n = Popup.open_count
@@ -420,6 +421,7 @@ class ChatWindow:
         w = self.w = ctk.CTkToplevel(app, fg_color=BG)
         w.title(t("Quick chat"))
         w.attributes("-topmost", True)
+        w.attributes("-alpha", self.cfg.get("chat_alpha", 1.0))
         w.geometry(self.cfg.get("chat_geo") or f"520x640+{w.winfo_screenwidth() - 560}+60")
         w.protocol("WM_DELETE_WINDOW", self.close)
         top = ctk.CTkFrame(w, fg_color="transparent")
@@ -685,6 +687,25 @@ def settings_window(app, req, chatwin, refresh):
                                             claude_connected(req) and claude_connect(req, True)))
     seg.set(next((k for k, v in secs.items() if v == c.get("timeout", 120)), t("2 min")))
     seg.pack(side="right")
+    def alpha_row(label, key, default, live=None):
+        r = ctk.CTkFrame(f, fg_color="transparent")
+        r.pack(fill="x", pady=4)
+        app.label(r, label, 13).pack(side="left")
+        val = app.label(r, "", 12, muted=True)
+        val.pack(side="right", padx=(6, 0))
+        def move(v):
+            c[key] = round(float(v), 2)
+            val.configure(text=f"{round(float(v) * 100)}%")
+            if live:
+                live(c[key])
+        sl = ctk.CTkSlider(r, from_=0.3, to=1.0, number_of_steps=14, width=220, command=move)
+        sl.set(c.get(key, default))
+        sl.pack(side="right")
+        sl.bind("<ButtonRelease-1>", lambda e: app.save())
+        move(c.get(key, default))
+    alpha_row(t("Pop-up opacity"), "popup_alpha", 0.97)
+    alpha_row(t("Quick chat opacity"), "chat_alpha", 1.0,
+              lambda a: chatwin.w and chatwin.w.attributes("-alpha", a))
     app.label(f, t("Other programs and AIs can ask you too: POST {u}/ask with the header Authorization: Bearer {k} "
                    "and JSON {{\"title\", \"message\", \"options\": [\"Yes\", \"No\"], \"input\": false}}. The reply "
                    "is {{\"answer\", \"text\"}}.", u=req.base, k=c["token"]), 11, muted=True,

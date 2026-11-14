@@ -9,7 +9,7 @@ from core.diag import Sampler
 from core import lang_ko
 from core.i18n import t
 from core.version import REPO, __version__
-from .theme import ACCENT, CARD2, MUTED, WARN, F
+from .theme import ACCENT, CARD2, MUTED, ON_ACCENT, TEXT, WARN, F
 
 
 def _tweak_switch(app, body, name, desc):
@@ -302,7 +302,7 @@ def _tick_images(app):
             r = (S * 0.06, S * 0.06, S * 0.94, S * 0.94)
             if on:
                 d.rounded_rectangle(r, radius=S * 0.2, fill=ACCENT)
-                d.line([(S * 0.26, S * 0.52), (S * 0.43, S * 0.69), (S * 0.75, S * 0.33)], fill="#0e1116",
+                d.line([(S * 0.26, S * 0.52), (S * 0.43, S * 0.69), (S * 0.75, S * 0.33)], fill=ON_ACCENT,
                        width=round(S * 0.11), joint="curve")
             else:
                 d.rounded_rectangle(r, radius=S * 0.2, outline=MUTED, width=round(S * 0.08))
@@ -558,6 +558,40 @@ def about(app, p):
                                               note2.configure(text=t("Restart the app to apply."))))
     th.set(next(k for k, v in themes.items() if v == app.cfg.get("theme", "system")))
     th.pack(side="right")
+    from . import theme as th_mod
+    restart = lambda: note2.configure(text=t("Restart the app to apply."))
+    r = app.row(body, (6, 0))
+    app.label(r, t("Accent color"), 13).pack(side="left")
+    swatches = {}
+    def pick_accent(name):
+        app.cfg["accent"] = name
+        app.save()
+        for k, b in swatches.items():
+            b.configure(border_width=3 if k == name else 0)
+        restart()
+    def custom():
+        from tkinter import colorchooser
+        cur = app.cfg.get("accent", "green")
+        rgb, hexv = colorchooser.askcolor(cur if cur.startswith("#") else th_mod.ACCENTS[cur][0],
+                                          title=t("Accent color"))
+        if hexv:
+            pick_accent(hexv.lower())
+    app.button(r, t("Custom..."), custom, primary=False, width=80).pack(side="right")
+    for name in reversed(list(th_mod.ACCENTS)):
+        col = th_mod.ACCENTS[name][0 if th_mod.MODE[0] == "dark" else 1]
+        b = ctk.CTkButton(r, text="", width=26, height=26, corner_radius=13, fg_color=col, hover_color=col,
+                          border_color=TEXT, border_width=3 if app.cfg.get("accent", "green") == name else 0,
+                          command=lambda n=name: pick_accent(n))
+        b.pack(side="right", padx=3)
+        app.tip(b, t(name.title()))
+        swatches[name] = b
+    surfaces = {t("Navy"): "navy", t("Black"): "black", t("Graphite"): "graphite", t("Plum"): "plum",
+                t("Forest"): "forest", t("Warm"): "warm"}
+    r = app.row(body, (6, 0))
+    app.label(r, t("Background"), 13).pack(side="left")
+    sf = app.seg(r, list(surfaces), lambda v: (app.cfg.__setitem__("surface", surfaces[v]), app.save(), restart()))
+    sf.set(next(k for k, v in surfaces.items() if v == app.cfg.get("surface", "navy")))
+    sf.pack(side="right")
     def tips_on(on):
         from . import kit
         kit.TIPS["on"] = on

@@ -2,7 +2,7 @@
 import customtkinter as ctk
 from core import disk, gpuinfo, net, sensors
 from core.i18n import t
-from .theme import ACCENT, CARD, CARD2, HOVER2, MUTED, TEXT, WARN
+from .theme import ACCENT, CARD, CARD2, HOVER2, MUTED, ON_ACCENT, TEXT, WARN
 
 def page(app, p):
     _network(app, p)
@@ -212,7 +212,7 @@ def _partitions(app, p):
                     w *= k
                     kind = "sys" if partition.changeable(x) and not x.get("letter") else "data"
                     cv.create_rectangle(x0, 2, x0 + w - 2, 24, fill=colors[kind], width=0)
-                    cv.create_text(x0 + 6, 13, anchor="w", fill="#0e1116" if kind == "data" else TEXT,
+                    cv.create_text(x0 + 6, 13, anchor="w", fill=ON_ACCENT if kind == "data" else TEXT,
                                    text=(x.get("letter") or "") + (f" {round(x['size'] / 1e9)}G" if w > 70 else ""))
                     x0 += w
                 if free:

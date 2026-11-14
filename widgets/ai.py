@@ -779,6 +779,20 @@ def _switcher_card(app, p):
     seg = app.seg(r, list(keeps), lambda v: (a.__setitem__("keep", keeps[v]), app.save()))
     seg.set(next((k for k, v in keeps.items() if v == a.get("keep", "-1")), t("Never")))
     seg.pack(side="right")
+    r = app.row(body, 4)
+    app.label(r, t("Switcher opacity"), 13).pack(side="left")
+    pct = app.label(r, "", 12, muted=True)
+    pct.pack(side="right", padx=(6, 0))
+    def move(v):
+        a["bar_alpha"] = round(float(v), 2)
+        pct.configure(text=f"{round(float(v) * 100)}%")
+        if bar.win:
+            bar.win.attributes("-alpha", a["bar_alpha"])
+    sl = ctk.CTkSlider(r, from_=0.3, to=1.0, number_of_steps=14, width=220, command=move)
+    sl.set(a.get("bar_alpha", 0.96))
+    sl.pack(side="right")
+    sl.bind("<ButtonRelease-1>", lambda e: app.save())
+    move(a.get("bar_alpha", 0.96))
     app.switch_row(body, t("Unload models while a game runs"), t("Gives the game all the VRAM; when the game "
                    "closes you are asked to load them again."), a.get("game_unload", True),
                    lambda on: (a.__setitem__("game_unload", on), app.save()))

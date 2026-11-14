@@ -22,7 +22,8 @@ if __name__ == "__main__":
         from core import gameboot
         gameboot.after_boot()
     i18n.init(cfg.get("lang", "auto"))
-    theme.init(cfg.get("theme", "system"))  # before any UI module reads the colors
+    theme.init(cfg.get("theme", "system"), cfg.get("accent", "green"), cfg.get("surface", "navy"))  # before any UI
+    # module reads the colors
     if cfg.get("font"):
         load_fonts()
     from ui import kit
