@@ -209,7 +209,7 @@ def storage(app, p):
     tree = app.table(body, [("name", t("Name")), ("size", t("Size (MB)")), ("age", t("Age (days)")),
                             ("reason", t("Reason")), ("path", t("Path"))], (220, 80, 80, 250, 300), 12,
                      {"temp": ACCENT, "installer": ACCENT, "large": WARN, "video": MUTED, "photo": MUTED,
-                      "music": MUTED, "download": MUTED, "personal": WARN, "leftover": WARN, "save": WARN, "ai": ACCENT})
+                      "music": MUTED, "download": MUTED, "personal": WARN, "leftover": WARN, "save": WARN, "rec": ACCENT})
     # the tick box is a picture in the first column (larger than a text symbol); a click there ticks the row,
     # a double click on the rest of the row opens its folder
     tree.configure(selectmode="none", show="tree headings")
@@ -287,7 +287,7 @@ def storage(app, p):
     app.button(r2, t("Select none"), lambda: select("none"), primary=False, width=90).pack(side="left")
     app.button(r2, t("Move selected to Recycle Bin"), trash).pack(side="right")
     app.tip(tree, t("Click the box to tick a row. Double-click a name to open its folder."))
-    _ai_clean(app, body, state, fill_marks=lambda: ([mark(i) for i in tree.get_children()], summary()), tree=tree)
+    _recommend(app, body, state, fill_marks=lambda: ([mark(i) for i in tree.get_children()], summary()), tree=tree)
 
 def _tick_images(app):
     """Unticked / ticked box pictures (22 px at 100% scaling), drawn 4x larger and scaled down for smooth corners."""
@@ -310,47 +310,29 @@ def _tick_images(app):
         app._ticks = out
     return app._ticks
 
-def _ai_clean(app, body, state, fill_marks, tree):
-    """AI picks from the scanned list. Only names, kinds, sizes and ages are sent - never contents or folders."""
-    from core import aiclean, i18n
+def _recommend(app, body, state, fill_marks, tree):
+    """Ticks the scanned rows that match a fixed rule (exact copies, installers of installed apps, extracted
+    archives, temp files...). Runs on this PC only."""
     r = app.row(body, (10, 0))
-    provs = {t("Ollama (on this PC)"): "ollama", t("Claude API (your key)"): "claude"}
-    prov = app.seg(r, list(provs), lambda v: (app.cfg.__setitem__("ai_clean", provs[v]), app.save()))
-    prov.set(next((k for k, v in provs.items() if v == app.cfg.get("ai_clean", "ollama")), t("Ollama (on this PC)")))
-    prov.pack(side="left")
     out = app.label(body, "", 12, muted=True, wrap=880)
-    def set_key():
-        d = ctk.CTkInputDialog(title=t("Claude API key"), text=t("Paste your Anthropic API key. It is saved "
-                               "encrypted for this Windows user. Leave empty to remove it."))
-        k = d.get_input()
-        if k is not None:
-            aiclean.save_key(app.cfg, k)
-            app.save()
     def done(picks):
         for path, why in picks:
             state["on"].add(path)
             if tree.exists(path):
-                tree.item(path, tags=("ai",))
-                tree.set(path, "reason", "AI: " + why)
+                tree.item(path, tags=("rec",))
+                tree.set(path, "reason", why)
         fill_marks()
-        out.configure(text=t("AI picked {n} items (ticked and shown in green). Check them before moving.",
-                             n=len(picks)), text_color=ACCENT)
+        out.configure(text=t("{n} items recommended (ticked and shown in green). Check them before moving.",
+                             n=len(picks)) if picks else t("Nothing matched the rules."), text_color=ACCENT)
     def run():
         if not state["c"]:
             return out.configure(text=t("Scan first."), text_color=WARN)
-        p = provs[prov.get()]
-        if p == "claude":
-            if not app.cfg.get("ai_key"):
-                return set_key()
-            n = len(aiclean.facts(state["c"])[1])
-            if not app.ask(t("AI suggestions"), t("Send the names, sizes and ages of {n} files to Anthropic (Claude "
-                           "API)? File contents and folder paths are not sent.", n=n)):
-                return
-        out.configure(text=t("Asking the AI..."), text_color=MUTED)
-        app.bg(lambda: aiclean.suggest(app.cfg, state["c"], p, i18n.LANG[0]), done,
-               lambda m: out.configure(text=t("AI suggestions failed: {e}", e=m), text_color=WARN))
-    app.button(r, t("AI suggestions"), run).pack(side="left", padx=8)
-    app.button(r, t("API key..."), set_key, primary=False, width=100).pack(side="left")
+        out.configure(text=t("Comparing files..."), text_color=MUTED)
+        app.bg(lambda: cleaner.recommend(state["c"]), done, lambda m: out.configure(text=m, text_color=WARN))
+    app.button(r, t("Recommend"), run).pack(side="left")
+    app.tip(r, t("Ticks only clear cases: exact copies of another file in the list (the oldest stays), 'name (1)' "
+                 "copies, installers of apps that are already installed, archives already extracted next to them, "
+                 "installers unused for 3 months, temp files and folders of removed apps unchanged for 6 months."))
     out.pack(anchor="w", pady=(6, 0))
 
 # ---------- Browsers ----------

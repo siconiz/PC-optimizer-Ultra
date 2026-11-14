@@ -216,3 +216,89 @@ def trash(paths, whole=()):
             except Exception:
                 pass
     return done
+
+# ---------- recommendations: fixed rules, nothing leaves this PC ----------
+# copy names Windows makes: 'name (1)', 'name - Copy', and the Korean Windows word for copy (escaped)
+_KO_COPY = "\ubcf5\uc0ac\ubcf8"
+COPY_NAME = re.compile(rf"^(copy of )|( \(\d+\)| - (copy|{_KO_COPY})( \(\d+\))?)$", re.I)
+
+def _quick_hash(path, full=False, chunk=1 << 20):
+    """SHA-256 of the first and last 1 MB (full=True: the whole file)."""
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        if full:
+            for b in iter(lambda: f.read(chunk), b""):
+                h.update(b)
+        else:
+            h.update(f.read(chunk))
+            f.seek(max(0, os.path.getsize(path) - chunk))
+            h.update(f.read(chunk))
+    return h.hexdigest()
+
+def _installed_words():
+    """Distinctive words (5+ letters) of installed app names, from the uninstall list and the app index only."""
+    from . import appsdb
+    names = []
+    try:
+        names = [v["DisplayName"] for v in appsdb._uninstall_entries()]
+    except Exception:
+        pass
+    names += [a.get("name") or "" for a in appsdb.load_cache() or []]
+    return {w for n in names for w in re.findall(r"[a-z0-9]+", re.sub(r"([a-z])([A-Z])", r"\1 \2", n).lower())
+            if len(w) >= 5 and w not in STOP}
+
+def recommend(cands):
+    """[(path, reason)] for rows that match a clear rule. Game saves, your own files and photos/videos/music are
+    only recommended when they are an exact copy of another file in the list."""
+    out = {}
+    files = [c for c in cands if c["kind"] not in WHOLE_FOLDER and os.path.isfile(c["path"])]
+    # 1) exact duplicates: same size, same start and end, then same whole content; the oldest copy stays
+    by_size = {}
+    for c in files:
+        if c["size_mb"] >= 1:
+            by_size.setdefault(os.path.getsize(c["path"]), []).append(c)
+    for group in (g for g in by_size.values() if len(g) > 1):
+        by_hash = {}
+        for c in group:
+            try:
+                by_hash.setdefault(_quick_hash(c["path"]), []).append(c)
+            except OSError:
+                pass
+        for same in (g for g in by_hash.values() if len(g) > 1):
+            full = {}
+            for c in same:
+                try:
+                    full.setdefault(_quick_hash(c["path"], True), []).append(c)
+                except OSError:
+                    pass
+            for dup in (g for g in full.values() if len(g) > 1):
+                dup.sort(key=lambda c: (bool(COPY_NAME.search(os.path.splitext(os.path.basename(c["path"]))[0])),
+                                        -c["age_days"]))
+                for c in dup[1:]:
+                    out[c["path"]] = t("Same file as {name}", name=os.path.basename(dup[0]["path"]))
+    keep = None
+    for c in cands:
+        p, k, age = c["path"], c["kind"], c["age_days"]
+        if p in out:
+            continue
+        stem, ext = os.path.splitext(os.path.basename(p))
+        folder = os.path.dirname(p)
+        if k == "temp":
+            out[p] = t("Temporary file")
+        elif COPY_NAME.search(stem) and k not in ("save", "leftover"):  # 'name (1).ext' next to 'name.ext'
+            orig = os.path.join(folder, COPY_NAME.sub("", stem) + ext)
+            if os.path.isfile(orig) and os.path.getsize(orig) == os.path.getsize(p):
+                out[p] = t("Copy of {name} (same size)", name=os.path.basename(orig))
+        elif k == "installer":
+            if ext.lower() in (".zip", ".7z", ".rar") and os.path.isdir(os.path.join(folder, stem)):
+                out[p] = t("Already extracted to the folder next to it")
+            else:
+                keep = _installed_words() if keep is None else keep
+                if age >= 7 and any(w in _norm(stem) for w in keep):
+                    out[p] = t("Installer of an app that is already installed")
+                elif age >= 90:
+                    out[p] = t("Installer not used for 3 months")
+        elif k == "leftover" and age >= 180:
+            out[p] = t("App removed and folder unchanged for 6 months")
+    return list(out.items())
