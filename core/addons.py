@@ -18,6 +18,8 @@ CATALOG = {  # id: title, kind, [(file, url or None for this repo, sha256)], ext
               "files": [("audio.py", None, "0f44090638ca34474dde5087cf37ebb3eb6d4511aefe6e865b2795ead5026618")]},
     "input": {"title": "Mouse & keyboard", "kind": "widget",
               "files": [("input.py", None, "6a2eab2a30a5e0da13e814cce7b2618bfbad3e40df353b1a510450dfd575bb35")]},
+    "assistant": {"title": "AI assistant", "kind": "widget",
+                  "files": [("assistant.py", None, "62eb219d1b1efc4e52f15225f100ee811ca42135b782958d64b38264076ccf3c")]},
     "ai": {"title": "AI optimization", "kind": "page",
            "files": [("ai.py", None, "d092fb07c837fb845554eef66806dd88f00e113f1b5d0d8bccf9a3fb07d92e14")]},
     "pretendard": {"title": "Pretendard font", "kind": "font", "family": "Pretendard", "license": "SIL OFL 1.1",
