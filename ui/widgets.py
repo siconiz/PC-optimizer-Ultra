@@ -15,7 +15,7 @@ SPAN = {"s": 1, "m": 2, "l": 4}
 
 UNIT = 110          # one grid row in px; widgets snap to 4 columns x UNIT rows
 DEFAULT_H = {"clock": 3, "network": 2, "ssd": 3, "space": 2, "battery": 3, "games": 4, "fps": 4, "memory": 3,
-             "gpu": 2, "wallpaper": 2, "display": 3, "audio": 4, "input": 4, "ram_oc": 3, "cpu_oc": 3, "overlay": 3, "assistant": 3}
+             "gpu": 2, "wallpaper": 2, "display": 3, "audio": 4, "input": 4, "ram_oc": 3, "cpu_oc": 3, "overlay": 3}
 
 def dashboard(app, page):
     from . import dash
@@ -42,7 +42,10 @@ def dashboard(app, page):
     _render(app)
 
 def _ids(app):
-    return app.cfg.setdefault("widgets", [])   # nothing by default
+    ids = app.cfg.setdefault("widgets", [])   # nothing by default
+    if "assistant" in ids:  # 1.4.2 test builds had the AI assistant as a widget; it is a page now
+        ids.remove("assistant")
+    return ids
 
 def _boxes(app):
     """{id: {'x': column, 'y': row, 'w': columns, 'h': rows}} for every widget on the dashboard. Widgets saved by

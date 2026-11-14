@@ -38,22 +38,29 @@ def _system(app, p):
     seg.set(t("Windows"))
     show(t("Windows"))
 
-def _ai(app, p):
-    """The AI optimization page is a download: until it is installed, the page offers the download."""
-    from core import addons
-    if addons.installed("ai"):
-        return addons.load("ai").page(app, p)
-    body = app.card(p, t("AI optimization"), t("Tools for local AI apps (Ollama, LM Studio and similar): free RAM and "
-                    "VRAM, unload models, and check whether a model fits. Download it to use it (about 10 KB)."))
-    msg = app.label(body, "", 12, muted=True)
-    def done(_):
-        app.pages.pop("AI optimization").destroy()
-        app.show("AI optimization")
-    def get():
-        msg.configure(text=t("Downloading..."))
-        app.bg(lambda: addons.download("ai"), done, lambda m: msg.configure(text=t("Download failed: {e}", e=m)))
-    app.button(body, t("Download"), get).pack(anchor="w")
-    msg.pack(anchor="w", pady=(6, 0))
+def _download_page(aid, key, about):
+    """A page that is a download (AI optimization, AI assistant): until it is installed, it offers the download."""
+    def build(app, p):
+        from core import addons
+        if addons.installed(aid):
+            return addons.load(aid).page(app, p)
+        body = app.card(p, t(key), t(about))
+        msg = app.label(body, "", 12, muted=True)
+        def done(_):
+            app.pages.pop(key).destroy()
+            app.show(key)
+        def get():
+            msg.configure(text=t("Downloading..."))
+            app.bg(lambda: addons.download(aid), done, lambda m: msg.configure(text=t("Download failed: {e}", e=m)))
+        app.button(body, t("Download"), get).pack(anchor="w")
+        msg.pack(anchor="w", pady=(6, 0))
+    return build
+
+_ai = _download_page("ai", "AI optimization", "Tools for local AI apps (Ollama, LM Studio and similar): free RAM and "
+                     "VRAM, unload models, and check whether a model fits. Download it to use it (about 10 KB).")
+_assistant = _download_page("assistant", "AI assistant", "Pop-ups when an AI such as Claude Code asks for your "
+                            "approval, API keys, a quick chat window, a prompt builder and a project packer for vibe "
+                            "coding. Download it to use it (about 30 KB).")
 
 def _lazy(module, fn):
     def build(app, p):
@@ -62,7 +69,7 @@ def _lazy(module, fn):
 
 # (key, icon, builder): a page's module is imported only when the page is opened the first time
 PAGES = [("Dashboard", "home", _lazy("widgets", "dashboard")), ("App management", "apps", _lazy("boost", "page")),
-         ("AI optimization", "robot", _ai), ("CPU & Memory", "cpu", _lazy("cpumem", "page")),
+         ("AI optimization", "robot", _ai), ("AI assistant", "help", _assistant), ("CPU & Memory", "cpu", _lazy("cpumem", "page")),
          ("Graphics & Games", "game", _graphics), ("Cooling", "speed", _lazy("pages", "cooling")), ("Overlay", "overlay", _lazy("overlay_ui", "page")),
          ("Diagnostics", "diag", _lazy("diag", "page")), ("Cleanup", "broom", _cleanup),
          ("System", "settings", _system), ("About", "info", _lazy("pages", "about"))]

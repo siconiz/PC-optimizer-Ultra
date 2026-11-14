@@ -1204,6 +1204,10 @@ KO = {
     'Pop-up opacity': '알림 창 불투명도',
     'Quick chat opacity': '빠른 채팅 불투명도',
     'Switcher opacity': '전환기 불투명도',
+    'Fill in what you know; it builds a clear prompt and checks what is missing. Nothing is sent anywhere until you send it yourself.': '아는 만큼 채우면 정리된 프롬프트를 만들고 빠진 부분을 점검합니다. 직접 보내기 전에는 어디에도 전송되지 않습니다.',
+    'Pop-ups when an AI asks you something, API keys, a quick chat window, a prompt builder and a project packer for vibe coding.': 'AI가 물어볼 때 뜨는 알림 창, API 키, 빠른 채팅 창, 프롬프트 작성기, 바이브 코딩용 프로젝트 묶기.',
+    'Quick chat shortcut. Press Enter to apply.': '빠른 채팅 단축키입니다. Enter를 눌러 적용하세요.',
+    'Pop-ups when an AI such as Claude Code asks for your approval, API keys, a quick chat window, a prompt builder and a project packer for vibe coding. Download it to use it (about 30 KB).': 'Claude Code 같은 AI가 허락을 구할 때 뜨는 알림 창, API 키, 빠른 채팅 창, 프롬프트 작성기, 바이브 코딩용 프로젝트 묶기. 다운로드해야 쓸 수 있습니다(약 30KB).',
 }
 
 NAME = "한국어"  # language selector label

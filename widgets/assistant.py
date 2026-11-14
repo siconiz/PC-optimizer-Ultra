@@ -1,6 +1,6 @@
-"""Downloadable dashboard widget: AI assistant. Pop-ups when an AI asks you something (Claude Code hooks or any
+"""Downloadable page: AI assistant. Pop-ups when an AI asks you something (Claude Code hooks or any
 program through a local address), API keys, a quick chat window, a prompt builder and a project packer for vibe
-coding. Provides build(app, body)."""
+coding. Provides page(app, p)."""
 import base64, fnmatch, json, os, secrets, threading, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import customtkinter as ctk
@@ -525,113 +525,96 @@ class ChatWindow:
             self.w.destroy()
             self.w = None
 
-def prompt_window(app, chatwin):
-    w = ctk.CTkToplevel(app, fg_color=BG)
-    w.title(t("Prompt builder"))
-    w.geometry("620x720")
-    w.attributes("-topmost", True)
-    f = ctk.CTkScrollableFrame(w, fg_color="transparent")
-    f.pack(fill="both", expand=True, padx=10, pady=10)
+def _prompt_card(app, p, chatwin):
+    body = app.card(p, t("Prompt builder"), t("Fill in what you know; it builds a clear prompt and checks what is "
+                    "missing. Nothing is sent anywhere until you send it yourself."))
     fields = {}
-    for key, label, h, hint in (("role", t("Role"), 30, t("e.g. senior Python developer, friendly tutor")),
-                                ("goal", t("Goal"), 60, t("What should the AI produce?")),
-                                ("context", t("Context"), 80, t("Situation, audience, the code or text it is about")),
-                                ("rules", t("Constraints"), 60, t("Must / must not, libraries, length, tone")),
-                                ("format", t("Output format"), 40, t("List, table, code only, steps...")),
-                                ("example", t("Example"), 60, t("A short example of a good answer (optional)"))):
-        app.label(f, label, 13, bold=True).pack(anchor="w", pady=(6, 0))
-        app.label(f, hint, 11, muted=True).pack(anchor="w")
-        box = ctk.CTkTextbox(f, height=h, fg_color=CARD2, wrap="word")
+    grid = ctk.CTkFrame(body, fg_color="transparent")
+    grid.pack(fill="x")
+    grid.grid_columnconfigure((0, 1), weight=1)
+    for i, (key, label, h, hint) in enumerate((
+            ("role", t("Role"), 34, t("e.g. senior Python developer, friendly tutor")),
+            ("goal", t("Goal"), 34, t("What should the AI produce?")),
+            ("context", t("Context"), 70, t("Situation, audience, the code or text it is about")),
+            ("rules", t("Constraints"), 70, t("Must / must not, libraries, length, tone")),
+            ("format", t("Output format"), 50, t("List, table, code only, steps...")),
+            ("example", t("Example"), 50, t("A short example of a good answer (optional)")))):
+        cell = ctk.CTkFrame(grid, fg_color="transparent")
+        cell.grid(row=i // 2, column=i % 2, sticky="ew", padx=(0, 10) if i % 2 == 0 else 0, pady=3)
+        app.label(cell, label, 13, bold=True).pack(anchor="w")
+        app.label(cell, hint, 11, muted=True).pack(anchor="w")
+        box = ctk.CTkTextbox(cell, height=h, fg_color=CARD2, wrap="word")
         box.pack(fill="x")
         fields[key] = box
     ask = ctk.BooleanVar(value=True)
-    ctk.CTkCheckBox(f, text=t("Ask me questions if anything is unclear"), variable=ask, fg_color=ACCENT,
+    ctk.CTkCheckBox(body, text=t("Ask me questions if anything is unclear"), variable=ask, fg_color=ACCENT,
                     hover_color=ACCENT).pack(anchor="w", pady=8)
-    out = ctk.CTkTextbox(f, height=160, fg_color=CARD, wrap="word")
-    notes = app.label(f, "", 12, wrap=560)
-    def values():
-        v = {k: b.get("1.0", "end").strip() for k, b in fields.items()}
-        v["ask"] = ask.get()
-        return v
+    out = ctk.CTkTextbox(body, height=150, fg_color=CARD2, wrap="word")
+    notes = app.label(body, "", 12, wrap=860)
     def make():
-        v = values()
-        text = build_prompt(v)
+        v = {k: b.get("1.0", "end").strip() for k, b in fields.items()}
+        text = build_prompt({**v, "ask": ask.get()})
         out.delete("1.0", "end")
         out.insert("1.0", text)
-        notes.configure(text="\n".join("•  " + x for x in check_prompt({k: v[k] for k in fields})) +
-                        "\n" + t("~{n} tokens", n=tokens(text)))
+        notes.configure(text="\n".join("•  " + x for x in check_prompt(v)) + "\n" + t("~{n} tokens", n=tokens(text)))
         return text
     def copy():
         text = make()
-        w.clipboard_clear()
-        w.clipboard_append(text)
-    r = ctk.CTkFrame(f, fg_color="transparent")
-    r.pack(fill="x", pady=(0, 6))
+        app.clipboard_clear()
+        app.clipboard_append(text)
+    r = app.row(body)
     app.button(r, t("Build and check"), make).pack(side="left")
     app.button(r, t("Copy"), copy, primary=False).pack(side="left", padx=6)
     app.button(r, t("Send to quick chat"), lambda: chatwin.open(make()), primary=False).pack(side="left")
-    out.pack(fill="x")
+    out.pack(fill="x", pady=(8, 0))
     notes.pack(anchor="w", pady=(6, 0))
 
-def pack_window(app):
+def _pack_card(app, p):
     from tkinter import filedialog
-    w = ctk.CTkToplevel(app, fg_color=BG)
-    w.title(t("Pack a project"))
-    w.geometry("560x330")
-    w.attributes("-topmost", True)
-    f = ctk.CTkFrame(w, fg_color="transparent")
-    f.pack(fill="both", expand=True, padx=12, pady=12)
-    app.label(f, t("Puts the folder tree and the code files into one text to paste into a chatbot. Build folders, "
-                   ".gitignore matches, secret-looking files (.env, keys) and binaries are left out."), 12,
-              muted=True, wrap=520).pack(anchor="w")
-    app.label(f, t("File types"), 13).pack(anchor="w", pady=(8, 0))
-    ext = ctk.CTkEntry(f, height=30)
-    ext.insert(0, app.cfg.setdefault("assistant", {}).get("pack_ext", CODE_EXT))
-    ext.pack(fill="x")
-    msg = app.label(f, "", 12, wrap=520)
+    body = app.card(p, t("Pack a project"), t("Puts the folder tree and the code files into one text to paste into a "
+                    "chatbot. Build folders, .gitignore matches, secret-looking files (.env, keys) and binaries are "
+                    "left out."))
+    c = app.cfg.setdefault("assistant", {})
+    r = app.row(body)
+    app.label(r, t("File types"), 13).pack(side="left")
+    ext = ctk.CTkEntry(r, height=30, width=620)
+    ext.insert(0, c.get("pack_ext", CODE_EXT))
+    ext.pack(side="right")
+    msg = app.label(body, "", 12, wrap=860)
     state = {}
     def run():
         folder = filedialog.askdirectory(title=t("Project folder"))
         if not folder:
             return
-        app.cfg["assistant"]["pack_ext"] = ext.get()
+        c["pack_ext"] = ext.get()
+        app.save()
         msg.configure(text=t("Packing..."), text_color=MUTED)
         def done(res):
             text, s = res
             state["text"] = text
-            w.clipboard_clear()
-            w.clipboard_append(text)
+            app.clipboard_clear()
+            app.clipboard_append(text)
             msg.configure(text=t("Copied: {f} files, ~{n} tokens. Left out: {s} secret-looking, {b} too big, {x} binary, "
                                  "{c} over the size limit.", f=s["files"], n=s["tokens"], s=s["secret"], b=s["big"],
                                  x=s["binary"], c=s["cut"]), text_color=ACCENT)
         app.bg(lambda: pack_project(folder, ext.get()), done, lambda m: msg.configure(text=m, text_color=WARN))
     def save():
         if state.get("text"):
-            p = filedialog.asksaveasfilename(defaultextension=".md", filetypes=[("Markdown", "*.md")])
-            if p:
-                with open(p, "w", encoding="utf-8") as fh:
+            path = filedialog.asksaveasfilename(defaultextension=".md", filetypes=[("Markdown", "*.md")])
+            if path:
+                with open(path, "w", encoding="utf-8") as fh:
                     fh.write(state["text"])
-    r = ctk.CTkFrame(f, fg_color="transparent")
-    r.pack(fill="x", pady=8)
+    r = app.row(body, (8, 0))
     app.button(r, t("Choose folder and copy"), run).pack(side="left")
     app.button(r, t("Save as .md"), save, primary=False).pack(side="left", padx=6)
-    msg.pack(anchor="w")
+    msg.pack(anchor="w", pady=(6, 0))
 
-def settings_window(app, req, chatwin, refresh):
-    w = ctk.CTkToplevel(app, fg_color=BG)
-    w.title(t("AI assistant settings"))
-    w.geometry("640x620")
-    w.attributes("-topmost", True)
-    f = ctk.CTkScrollableFrame(w, fg_color="transparent")
-    f.pack(fill="both", expand=True, padx=10, pady=10)
-    c = req.cfg
-    # API keys
-    app.label(f, t("API keys"), 15, bold=True).pack(anchor="w")
-    app.label(f, t("Saved encrypted for this Windows user. Test lists the models the key can use."), 12,
-              muted=True, wrap=580).pack(anchor="w")
+def _keys_card(app, p, refresh):
+    c = app.cfg["assistant"]
+    body = app.card(p, t("API keys"), t("Saved encrypted for this Windows user. Test lists the models the key can "
+                    "use."))
     for prov, (name, var) in PROVIDERS.items():
-        r = ctk.CTkFrame(f, fg_color="transparent")
-        r.pack(fill="x", pady=3)
+        r = app.row(body, 3)
         app.label(r, name, 13).pack(side="left")
         state = app.label(r, t("Saved") if c.get("keys", {}).get(prov) else t("None"), 12, muted=True)
         state.pack(side="left", padx=8)
@@ -641,13 +624,14 @@ def settings_window(app, req, chatwin, refresh):
                 save_key(c, prov, k)
                 app.save()
                 state.configure(text=t("Saved") if k.strip() else t("None"), text_color=MUTED)
+                refresh()
         def test(prov=prov, state=state):
             if not c.get("keys", {}).get(prov):
                 return
             state.configure(text=t("Testing..."))
             app.bg(lambda: list_models(c, prov), lambda ids: state.configure(
                 text=t("Works: {n} models", n=len(ids)), text_color=ACCENT),
-                   lambda m: state.configure(text=m[:60], text_color=WARN))
+                   lambda m: state.configure(text=m[:70], text_color=WARN))
         def env(prov=prov, state=state):
             if c.get("keys", {}).get(prov):
                 set_env_key(c, prov, True)
@@ -655,16 +639,16 @@ def settings_window(app, req, chatwin, refresh):
         app.button(r, t("Environment"), env, primary=False, width=90).pack(side="right")
         app.button(r, t("Test key"), test, primary=False, width=70).pack(side="right", padx=4)
         app.button(r, t("Key..."), edit, primary=False, width=60).pack(side="right")
-    app.label(f, t("Environment: saves the key as ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY for your user, so "
-                   "coding tools started later use it."), 11, muted=True, wrap=580).pack(anchor="w", pady=(2, 10))
-    # requests
-    app.label(f, t("AI request pop-ups"), 15, bold=True).pack(anchor="w")
-    app.label(f, t("When Claude Code needs your approval, a small window shows what it wants to run and your Allow "
-                   "or Deny goes straight back. Without an answer it falls back to the normal prompt in Claude Code."),
-              12, muted=True, wrap=580).pack(anchor="w")
-    msg = app.label(f, "", 12, wrap=580)
-    r = ctk.CTkFrame(f, fg_color="transparent")
-    r.pack(fill="x", pady=4)
+    app.label(body, t("Environment: saves the key as ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY for your user, "
+                      "so coding tools started later use it."), 11, muted=True, wrap=860).pack(anchor="w", pady=(4, 0))
+
+def _requests_card(app, p, req, chatwin, refresh):
+    c = req.cfg
+    body = app.card(p, t("AI request pop-ups"), t("When Claude Code needs your approval, a small window shows what it "
+                    "wants to run and your Allow or Deny goes straight back. Without an answer it falls back to the "
+                    "normal prompt in Claude Code."))
+    msg = app.label(body, "", 12, wrap=860)
+    r = app.row(body)
     def connect(on):
         try:
             claude_connect(req, on)
@@ -675,21 +659,23 @@ def settings_window(app, req, chatwin, refresh):
         refresh()
     app.button(r, t("Connect Claude Code"), lambda: connect(True)).pack(side="left")
     app.button(r, t("Disconnect"), lambda: connect(False), primary=False).pack(side="left", padx=6)
-    app.button(r, t("Test pop-up"), lambda: Popup(app, t("Test"), t("This is how a request looks."),
-                                                  "npm run build", ((("allow", t("Allow")), ("deny", t("Deny")))),
-                                                  True, 30), primary=False).pack(side="left")
-    msg.pack(anchor="w")
-    r = ctk.CTkFrame(f, fg_color="transparent")
-    r.pack(fill="x", pady=4)
+    app.button(r, t("Test pop-up"), lambda: Popup(app, t("Test"), t("This is how a request looks."), "npm run build",
+                                                  (("allow", t("Allow")), ("deny", t("Deny"))), True, 30),
+               primary=False).pack(side="left")
+    msg.pack(anchor="w", pady=(4, 0))
+    r = app.row(body, 4)
     app.label(r, t("Wait for an answer"), 13).pack(side="left")
     secs = {t("1 min"): 60, t("2 min"): 120, t("5 min"): 300}
-    seg = app.seg(r, list(secs), lambda v: (c.__setitem__("timeout", secs[v]), app.save(),
-                                            claude_connected(req) and claude_connect(req, True)))
+    def set_wait(v):
+        c["timeout"] = secs[v]
+        app.save()
+        if claude_connected(req):
+            claude_connect(req, True)  # the hook timeout follows the wait time
+    seg = app.seg(r, list(secs), set_wait)
     seg.set(next((k for k, v in secs.items() if v == c.get("timeout", 120)), t("2 min")))
     seg.pack(side="right")
     def alpha_row(label, key, default, live=None):
-        r = ctk.CTkFrame(f, fg_color="transparent")
-        r.pack(fill="x", pady=4)
+        r = app.row(body, 4)
         app.label(r, label, 13).pack(side="left")
         val = app.label(r, "", 12, muted=True)
         val.pack(side="right", padx=(6, 0))
@@ -704,25 +690,15 @@ def settings_window(app, req, chatwin, refresh):
         sl.bind("<ButtonRelease-1>", lambda e: app.save())
         move(c.get(key, default))
     alpha_row(t("Pop-up opacity"), "popup_alpha", 0.97)
-    alpha_row(t("Quick chat opacity"), "chat_alpha", 1.0,
-              lambda a: chatwin.w and chatwin.w.attributes("-alpha", a))
-    app.label(f, t("Other programs and AIs can ask you too: POST {u}/ask with the header Authorization: Bearer {k} "
-                   "and JSON {{\"title\", \"message\", \"options\": [\"Yes\", \"No\"], \"input\": false}}. The reply "
-                   "is {{\"answer\", \"text\"}}.", u=req.base, k=c["token"]), 11, muted=True,
-              wrap=580).pack(anchor="w", pady=(8, 0))
-    app.button(f, t("Copy example (PowerShell)"), lambda: (w.clipboard_clear(), w.clipboard_append(
+    alpha_row(t("Quick chat opacity"), "chat_alpha", 1.0, lambda a: chatwin.w and chatwin.w.attributes("-alpha", a))
+    app.label(body, t("Other programs and AIs can ask you too: POST {u}/ask with the header Authorization: Bearer {k} "
+                      "and JSON {{\"title\", \"message\", \"options\": [\"Yes\", \"No\"], \"input\": false}}. The reply "
+                      "is {{\"answer\", \"text\"}}.", u=req.base, k=c["token"]), 11, muted=True,
+              wrap=860).pack(anchor="w", pady=(8, 0))
+    app.button(body, t("Copy example (PowerShell)"), lambda: (app.clipboard_clear(), app.clipboard_append(
         f'Invoke-RestMethod -Method Post -Uri {req.base}/ask -Headers @{{Authorization="Bearer {c["token"]}"}} '
         '-ContentType "application/json" -Body \'{"title":"Build finished","message":"Deploy now?",'
         '"options":["Yes","No"]}\'')), primary=False).pack(anchor="w", pady=4)
-    # chat shortcut
-    r = ctk.CTkFrame(f, fg_color="transparent")
-    r.pack(fill="x", pady=(10, 4))
-    app.label(r, t("Quick chat shortcut"), 13).pack(side="left")
-    hk = ctk.CTkEntry(r, width=160, height=30)
-    hk.insert(0, c.get("chat_key", "Ctrl+Shift+Space"))
-    hk.pack(side="right")
-    hk.bind("<Return>", lambda e: (c.__setitem__("chat_key", hk.get().strip() or "Ctrl+Shift+Space"), app.save(),
-                                   _start_key(app, chatwin)))
 
 def _start_key(app, chatwin):
     from ui.overlay import Hotkey
@@ -732,36 +708,44 @@ def _start_key(app, chatwin):
     app._assist_key = Hotkey(app, app.cfg["assistant"].get("chat_key", "Ctrl+Shift+Space"), chatwin.toggle)
     app._assist_key.start()
 
-# ---------- the dashboard widget ----------
-def build(app, body):
+# ---------- the page ----------
+def page(app, p):
     st = app.__dict__.get("assistant")
     if not st:  # once per app run: the local address, the chat window and its shortcut
         req = Requests(app)
         req.start()
         st = app.assistant = {"req": req, "chat": ChatWindow(app)}
         _start_key(app, st["chat"])
-    req, chatwin = st["req"], st["chat"]
-    status = app.label(body, "", 12, muted=True, wrap=400)
+    req, chatwin, c = st["req"], st["chat"], app.cfg["assistant"]
+    body = app.card(p, t("AI assistant"), t("Pop-ups when an AI asks you something, API keys, a quick chat window, "
+                    "a prompt builder and a project packer for vibe coding."))
+    status = app.label(body, "", 13, wrap=860)
     status.pack(anchor="w")
     def refresh():
         if not status.winfo_exists():
             return
         if req.error:
-            return status.configure(text=t("Request pop-ups are off: port {p} is in use.", p=req.cfg.get("port", PORT)),
+            return status.configure(text=t("Request pop-ups are off: port {p} is in use.", p=c.get("port", PORT)),
                                     text_color=WARN)
         on = claude_connected(req)
-        keys = [PROVIDERS[p][0].split(" ")[0] for p in PROVIDERS if req.cfg.get("keys", {}).get(p)]
+        keys = [PROVIDERS[k][0].split(" ")[0] for k in PROVIDERS if c.get("keys", {}).get(k)]
         status.configure(text=(t("Claude Code: connected") if on else t("Claude Code: not connected")) + "  ·  " +
                          (t("API keys: {k}", k=", ".join(keys)) if keys else t("No API key")),
                          text_color=ACCENT if on else MUTED)
-    r = ctk.CTkFrame(body, fg_color="transparent")
-    r.pack(fill="x", pady=(8, 0))
+    r = app.row(body, (8, 0))
     app.button(r, t("Quick chat"), chatwin.toggle).pack(side="left")
-    app.button(r, t("Prompt"), lambda: prompt_window(app, chatwin), primary=False, width=70).pack(side="left", padx=4)
-    app.button(r, t("Pack project"), lambda: pack_window(app), primary=False, width=100).pack(side="left")
-    r = ctk.CTkFrame(body, fg_color="transparent")
-    r.pack(fill="x", pady=(6, 0))
-    app.button(r, t("Settings"), lambda: settings_window(app, req, chatwin, refresh), primary=False,
-               width=80).pack(side="left")
+    hk = ctk.CTkEntry(r, width=170, height=32)
+    hk.insert(0, c.get("chat_key", "Ctrl+Shift+Space"))
+    hk.pack(side="left", padx=8)
+    def set_key(*_):
+        c["chat_key"] = hk.get().strip() or "Ctrl+Shift+Space"
+        app.save()
+        _start_key(app, chatwin)
+    hk.bind("<Return>", set_key)
+    app.tip(hk, t("Quick chat shortcut. Press Enter to apply."))
+    _requests_card(app, p, req, chatwin, refresh)
+    _keys_card(app, p, refresh)
+    _prompt_card(app, p, chatwin)
+    _pack_card(app, p)
     refresh()
-    app.every(5000, refresh, status, "Dashboard")
+    app.every(5000, refresh, status, "AI assistant")
