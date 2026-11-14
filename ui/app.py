@@ -96,6 +96,7 @@ class App(ctk.CTk, Kit):
         from .bgimage import Background
         self.background = Background(self)
         self.autopilot, self.app_index, self.game_exes, self.autopilot_lines, self.hw = None, [], set(), [], None
+        self.game_hooks = {"start": [], "close": []}  # add-ons (AI page) that react to games
         from .overlay import Overlay
         self.overlay = Overlay(self)
         self.show("Dashboard")
@@ -300,6 +301,8 @@ class App(ctk.CTk, Kit):
 
     def _game_started(self):
         from .overlay import cfg_of
+        for fn in self.game_hooks["start"]:
+            fn()
         c = cfg_of(self)
         if c["auto"] and not self.overlay.win:
             self.overlay.show()
@@ -317,6 +320,8 @@ class App(ctk.CTk, Kit):
 
     def _game_closed(self):
         """After a game boot, offer to turn memory integrity back on as soon as the game closes."""
+        for fn in self.game_hooks["close"]:
+            fn()
         if getattr(self, "_auto_overlay", False):  # hide the overlay we opened for this game
             self._auto_overlay = False
             if not self.cfg.get("overlay", {}).get("on"):
